@@ -10,21 +10,21 @@ services:
       - ./docker/motorbike-vietnam.lua:/profiles/motorbike-vietnam.lua:ro
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
     ports:
-      - "5050:5000"
-      - "5051:5001"
+      - "127.0.0.1:5050:5000"
+      - "127.0.0.1:5051:5001"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pgrep -x osrm-routed || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 120s
+      start_period: 600s
 
   nominatim:
     image: mediagis/nominatim:4.4
     container_name: nominatim
     ports:
-      - "9091:8080"
+      - "127.0.0.1:9091:8080"
     environment:
       PBF_PATH: /nominatim/data/vietnam-latest.osm.pbf
       IMPORT_WIKIPEDIA: "false"
@@ -33,7 +33,7 @@ services:
     volumes:
       - nominatim-db:/var/lib/postgresql/14/main
       - ./data:/nominatim/data
-    shm_size: 2gb
+    shm_size: 4gb
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/status | grep -q OK"]
