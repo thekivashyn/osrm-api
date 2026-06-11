@@ -56,6 +56,15 @@ services:
       - "${DATA_DIR}:/data"
       - "${OSM_PBF:-../../data/vietnam-latest.osm.pbf}:/data/openstreetmap/vietnam-latest.osm.pbf:ro"
 
+  polylines:
+    image: pelias/polylines:master
+    container_name: pelias_polylines
+    profiles: ["import"]
+    volumes:
+      - "./pelias.json:/code/pelias.json"
+      - "${DATA_DIR}:/data"
+      - "${OSM_PBF:-../../data/vietnam-latest.osm.pbf}:/data/openstreetmap/vietnam-latest.osm.pbf:ro"
+
   csv-importer:
     image: pelias/csv-importer:master
     container_name: pelias_csv_importer

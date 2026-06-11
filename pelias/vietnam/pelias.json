@@ -35,6 +35,10 @@
     "csv": {
       "datapath": "/data/custom-addresses"
     },
+    "polyline": {
+      "datapath": "/data/polylines",
+      "files": ["extract.0sv"]
+    },
     "whosonfirst": {
       "datapath": "/data/whosonfirst",
       "sqlite": true,

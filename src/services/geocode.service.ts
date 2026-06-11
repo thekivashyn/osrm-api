@@ -171,12 +171,15 @@ const NEARBY_RADIUS_KM = 75;
  * Progressive simplification for VN addresses that OSM rarely has verbatim:
  * "230/25 Lạc Long Quân, Bình Thới, HCM" →
  *   ["230/25 Lạc Long Quân, Bình Thới, HCM", "230/25 Lạc Long Quân",
+ *    "Hẻm 230 Lạc Long Quân" (OSM maps alleys as streets),
  *    "230 Lạc Long Quân" (alley mouth), "Lạc Long Quân"]
  */
 function buildQueryVariants(q: string): string[] {
   const variants = [q];
   const head = (q.split(",")[0] ?? "").trim();
   if (head && head !== q) variants.push(head);
+  const alley = head.match(/^(\d+)\/[\d/]+\s+(.+)/);
+  if (alley && !/^hẻm\s/i.test(head)) variants.push(`Hẻm ${alley[1]} ${alley[2]}`);
   const alleyMouth = head.replace(/^(\d+)\/[\d/]+\s+/, "$1 ");
   if (alleyMouth && alleyMouth !== head) variants.push(alleyMouth);
   const streetOnly = head.replace(/^[\d/]+\s+/, "");
@@ -205,8 +208,9 @@ async function peliasQuery(
       params["boundary.circle.radius"] = String(NEARBY_RADIUS_KM);
     }
   }
-  // Autocomplete for partial input; search for longer structured queries.
-  const endpoint = text.length >= 12 || /\d/.test(text) ? "/v1/search" : "/v1/autocomplete";
+  // Digits suggest a structured address → /v1/search (libpostal parsing);
+  // plain names rank much better through /v1/autocomplete.
+  const endpoint = /\d/.test(text) ? "/v1/search" : "/v1/autocomplete";
   const data = await peliasFetch(buildPeliasUrl(endpoint, params));
   return data.features;
 }
@@ -231,26 +235,52 @@ export async function searchAddress(
   const bias = parseBiasCoords(options.lat, options.lng);
   const variants = buildQueryVariants(q);
 
-  let features: PeliasFeature[] = [];
-  for (const variant of variants) {
-    features = await peliasQuery(variant, cappedLimit, bias, bias != null);
-    if (features.length > 0) break;
-  }
-  // Nothing near the GPS bias — retry the original query nationwide so
-  // explicit cross-city searches ("Hồ Gươm Hà Nội") still resolve.
-  if (features.length === 0 && bias) {
-    features = await peliasQuery(q, cappedLimit, bias, false);
-  }
-
-  if (features.length === 0) {
-    geocodeCache.set(cacheKey, []);
-    return [];
-  }
-
-  const results = mapPeliasFeatures(features, bias);
+  let nearby: PeliasFeature[] = [];
   if (bias) {
-    results.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+    for (const variant of variants) {
+      nearby = await peliasQuery(variant, cappedLimit, bias, true);
+      if (nearby.length > 0) break;
+    }
   }
+
+  // Original text nationwide: resolves explicit cross-city intent
+  // ("Hồ Gươm Hà Nội" typed while GPS is in HCM). When bias gave hits,
+  // failures here must not break the response.
+  let national: PeliasFeature[] = [];
+  if (bias) {
+    try {
+      national = await peliasQuery(q, cappedLimit, bias, false);
+    } catch {
+      national = [];
+    }
+  } else {
+    for (const variant of variants) {
+      national = await peliasQuery(variant, cappedLimit, null, false);
+      if (national.length > 0) break;
+    }
+  }
+
+  const nearbyResults = mapPeliasFeatures(nearby, bias);
+  nearbyResults.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+
+  const seen = new Set(nearbyResults.map((r) => `${r.lat.toFixed(6)},${r.lng.toFixed(6)}`));
+  // National pool keeps Pelias relevance order — distance sort would bury
+  // the intended far-city result under fuzzy nearby matches.
+  const extras = mapPeliasFeatures(national, bias).filter(
+    (r) => !seen.has(`${r.lat.toFixed(6)},${r.lng.toFixed(6)}`),
+  );
+
+  let results: GeocodeResult[];
+  if (nearbyResults.length === 0) {
+    results = extras.slice(0, cappedLimit);
+  } else {
+    const extraSlots = Math.min(2, extras.length);
+    results = [
+      ...nearbyResults.slice(0, cappedLimit - extraSlots),
+      ...extras.slice(0, extraSlots),
+    ];
+  }
+
   geocodeCache.set(cacheKey, results);
   return results;
 }

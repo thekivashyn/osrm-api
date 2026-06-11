@@ -15,9 +15,9 @@ describe("searchAddress — Pelias", () => {
   });
 
   test("calls Pelias autocomplete with focus and country boundary", async () => {
-    let requestedUrl = "";
+    const requestedUrls: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
-      requestedUrl = String(input);
+      requestedUrls.push(String(input));
       return Response.json({
         type: "FeatureCollection",
         features: [
@@ -32,7 +32,7 @@ describe("searchAddress — Pelias", () => {
 
     const results = await searchAddress("Le Loi", 5, { lat: 10.78, lng: 106.69 });
 
-    const url = new URL(requestedUrl);
+    const url = new URL(requestedUrls[0]!);
     expect(url.pathname).toContain("/v1/autocomplete");
     expect(url.searchParams.get("text")).toBe("Le Loi");
     expect(url.searchParams.get("boundary.country")).toBe("VNM");
@@ -87,8 +87,11 @@ describe("searchAddress — Pelias", () => {
     expect(requestedTexts).toEqual([
       "230/25 Lạc Long Quân, Bình Thới, HCM",
       "230/25 Lạc Long Quân",
+      "Hẻm 230 Lạc Long Quân",
       "230 Lạc Long Quân",
       "Lạc Long Quân",
+      // original retried nationwide for cross-city intent
+      "230/25 Lạc Long Quân, Bình Thới, HCM",
     ]);
     expect(results[0]?.displayName).toContain("Quận 11");
   });
@@ -118,6 +121,38 @@ describe("searchAddress — Pelias", () => {
     expect(circleFlags.filter((f) => f === "75").length).toBeGreaterThan(0);
     expect(circleFlags[circleFlags.length - 1]).toBeNull();
     expect(results[0]?.displayName).toContain("Hà Nội");
+  });
+
+  test("appends far-city extras after nearby matches", async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const nationwide = url.searchParams.get("boundary.circle.radius") == null;
+      return Response.json({
+        type: "FeatureCollection",
+        features: nationwide
+          ? [
+              {
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [105.852, 21.029] },
+                properties: { label: "Hồ Hoàn Kiếm, Hà Nội", layer: "venue", distance: 1130 },
+              },
+            ]
+          : [
+              {
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [106.695, 10.782] },
+                properties: { label: "Hồ Con Rùa, TP.HCM", layer: "venue", distance: 1.2 },
+              },
+            ],
+      });
+    }) as typeof fetch;
+
+    const results = await searchAddress("Hồ Hoàn Kiếm Hà Nội", 5, { lat: 10.78, lng: 106.69 });
+
+    expect(results.map((r) => r.displayName)).toEqual([
+      "Hồ Con Rùa, TP.HCM",
+      "Hồ Hoàn Kiếm, Hà Nội",
+    ]);
   });
 
   test("uses /v1/search for queries with digits", async () => {
@@ -157,9 +192,10 @@ describe("searchAddress — Pelias", () => {
     }) as typeof fetch;
 
     await searchAddress("Cached", 5, { lat: 10.78, lng: 106.69 });
+    const fetchesAfterFirst = fetchCount;
     await searchAddress("Cached", 5, { lat: 10.78, lng: 106.69 });
 
-    expect(fetchCount).toBe(1);
+    expect(fetchCount).toBe(fetchesAfterFirst);
   });
 });
 
