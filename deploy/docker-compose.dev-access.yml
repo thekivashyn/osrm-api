@@ -1,0 +1,12 @@
+# Overlay for dev-only external access — use with UFW allowlist (see allow-dev-ip.sh).
+# Do NOT use without firewall rules restricting 5050/5051/9091 to trusted IPs.
+
+services:
+  osrm:
+    ports:
+      - "5050:5000"
+      - "5051:5001"
+
+  nominatim:
+    ports:
+      - "9091:8080"

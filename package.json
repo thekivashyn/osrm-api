@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "NODE_ENV=development bun run --watch server.ts",
+    "dev:remote": "bun --env-file=.env.development.remote run --watch server.ts",
+    "dev:remote:tunnel": "bun --env-file=.env.development.remote-tunnel run --watch server.ts",
     "start": "bun run server.ts",
     "test": "bun test",
     "test:8080": "bun run scripts/smoke-8080.ts",
