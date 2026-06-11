@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { ApiContract } from "../components/ApiContract";
 import { ApiTryPanel, CopyBtn } from "../components/ApiTryPanel";
+import { useActiveSection } from "../hooks/useActiveSection";
 import {
   API_DOC_CATEGORIES,
   API_DOCS,
@@ -25,52 +27,6 @@ function MethodBadge({ method }: { method: "GET" | "POST" }) {
   );
 }
 
-function ParamsTable({ params }: { params: NonNullable<ApiDocEndpoint["params"]> }) {
-  return (
-    <div className="mt-4 overflow-hidden rounded-xl border border-white/[0.06]">
-      <table className="w-full text-left text-xs">
-        <thead>
-          <tr className="border-b border-white/[0.06] bg-white/[0.02] text-[10px] uppercase tracking-wider text-neutral-600">
-            <th className="px-3 py-2.5 font-semibold">Param</th>
-            <th className="px-3 py-2.5 font-semibold">In</th>
-            <th className="px-3 py-2.5 font-semibold">Type</th>
-            <th className="hidden px-3 py-2.5 font-semibold sm:table-cell">Mô tả</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-white/[0.04]">
-          {params.map((p) => (
-            <tr key={p.name} className="text-neutral-400">
-              <td className="px-3 py-2.5 font-mono text-neutral-200">
-                {p.name}
-                {p.required && <span className="ml-1 text-rose-400">*</span>}
-              </td>
-              <td className="px-3 py-2.5 capitalize text-neutral-500">{p.in}</td>
-              <td className="px-3 py-2.5 font-mono text-[11px] text-emerald-400/80">{p.type}</td>
-              <td className="hidden px-3 py-2.5 text-neutral-500 sm:table-cell">{p.description}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function SampleResponseBlock({ ep }: { ep: ApiDocEndpoint }) {
-  if (ep.sampleResponse == null) return null;
-  const text = JSON.stringify(ep.sampleResponse, null, 2);
-  return (
-    <div className="mt-5">
-      <div className="mb-1.5 flex items-center justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-600">Sample response</p>
-        <CopyBtn text={text} label="Copy sample" />
-      </div>
-      <pre className="max-h-48 overflow-auto rounded-xl border border-white/[0.06] bg-black p-3 font-mono text-[11px] leading-relaxed text-neutral-500">
-        {text}
-      </pre>
-    </div>
-  );
-}
-
 function EndpointSection({ ep }: { ep: ApiDocEndpoint }) {
   const queryString = defaultQueryString(ep);
   const bodyJson = defaultBodyJson(ep);
@@ -84,36 +40,26 @@ function EndpointSection({ ep }: { ep: ApiDocEndpoint }) {
   );
 
   return (
-    <article id={ep.id} className="scroll-mt-24 border-b border-white/[0.06] pb-10 last:border-0">
-      <div className="flex flex-wrap items-center gap-2">
-        <MethodBadge method={ep.method} />
-        <code className="font-mono text-sm text-white">{ep.path}</code>
-        <CopyBtn text={ep.path} label="Path" />
-        <CopyBtn text={curl} label="cURL" />
-        <CopyBtn text={fetchSnippet} label="fetch" />
+    <article id={ep.id} className="scroll-mt-[3.25rem] border-b border-white/[0.06] pb-12 last:border-0">
+      <div className="sticky top-0 z-30 -mx-4 border-b border-white/[0.08] bg-black px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <MethodBadge method={ep.method} />
+            <code className="truncate font-mono text-sm text-white">{ep.path}</code>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <CopyBtn text={ep.path} label="Path" />
+            <CopyBtn text={curl} label="cURL" />
+            <CopyBtn text={fetchSnippet} label="fetch" />
+          </div>
+        </div>
+        <h3 className="mt-2 text-sm font-semibold text-white sm:text-base">{ep.title}</h3>
       </div>
 
-      <h3 className="mt-3 text-base font-semibold text-white">{ep.title}</h3>
-      <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-neutral-500">{ep.description}</p>
+      <p className="mt-4 max-w-3xl text-sm leading-relaxed text-neutral-500">{ep.description}</p>
 
       <ApiTryPanel ep={ep} />
-
-      {ep.params && ep.params.length > 0 && <ParamsTable params={ep.params} />}
-
-      {ep.errors && ep.errors.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {ep.errors.map((e) => (
-            <span
-              key={e.status}
-              className="rounded-lg border border-rose-500/20 bg-rose-950/30 px-2.5 py-1 text-[11px] text-rose-300"
-            >
-              <span className="font-mono font-semibold">{e.status}</span> — {e.description}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <SampleResponseBlock ep={ep} />
+      <ApiContract ep={ep} />
     </article>
   );
 }
@@ -121,6 +67,7 @@ function EndpointSection({ ep }: { ep: ApiDocEndpoint }) {
 export default function ApiDocsPage() {
   const [category, setCategory] = useState<ApiDocCategory | "all">("all");
   const [query, setQuery] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -144,65 +91,94 @@ export default function ApiDocsPage() {
     return groups;
   }, [filtered]);
 
+  const sectionIds = useMemo(() => filtered.map((ep) => ep.id), [filtered]);
+  const activeId = useActiveSection(sectionIds, scrollRef);
+
   const scrollTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const root = scrollRef.current;
+    const el = document.getElementById(id);
+    if (!root || !el) return;
+    const top = el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 4;
+    root.scrollTo({ top, behavior: "smooth" });
   };
+
+  const sidebarItems = useMemo(() => {
+    return API_DOC_CATEGORIES.map((cat) => {
+      const items = API_DOCS.filter(
+        (ep) => ep.category === cat.id && (category === "all" || category === cat.id),
+      ).filter((ep) =>
+        query.trim()
+          ? ep.path.toLowerCase().includes(query.toLowerCase()) ||
+            ep.title.toLowerCase().includes(query.toLowerCase())
+          : true,
+      );
+      return { cat, items };
+    }).filter((g) => g.items.length > 0);
+  }, [category, query]);
 
   return (
     <div className="flex h-full w-full">
       <aside className="hidden w-56 shrink-0 overflow-y-auto border-r border-white/[0.06] bg-black p-4 xl:block">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-600">On this page</p>
         <nav className="mt-3 space-y-4">
-          {API_DOC_CATEGORIES.map((cat) => {
-            const items = API_DOCS.filter(
-              (ep) => ep.category === cat.id && (category === "all" || category === cat.id),
-            ).filter((ep) =>
-              query.trim()
-                ? ep.path.toLowerCase().includes(query.toLowerCase()) ||
-                  ep.title.toLowerCase().includes(query.toLowerCase())
-                : true,
-            );
-            if (items.length === 0) return null;
-            return (
+          {sidebarItems.map(({ cat, items }) => (
               <div key={cat.id}>
                 <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-700">
                   {cat.label}
                 </p>
                 <ul className="space-y-0.5">
-                  {items.map((ep) => (
+                  {items.map((ep) => {
+                    const active = activeId === ep.id;
+                    return (
                     <li key={ep.id}>
                       <button
                         type="button"
                         onClick={() => scrollTo(ep.id)}
-                        className="w-full truncate rounded-md px-2 py-1 text-left text-[11px] text-neutral-500 transition hover:bg-white/[0.04] hover:text-neutral-300"
+                        className={`w-full truncate rounded-md px-2 py-1 text-left text-[11px] transition ${
+                          active
+                            ? "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20"
+                            : "text-neutral-500 hover:bg-white/[0.04] hover:text-neutral-300"
+                        }`}
                       >
-                        <span className="font-mono text-neutral-600">{ep.method}</span> {ep.title}
+                        <span className={`font-mono ${active ? "text-emerald-500/80" : "text-neutral-600"}`}>
+                          {ep.method}
+                        </span>{" "}
+                        {ep.title}
                       </button>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </div>
-            );
-          })}
+          ))}
         </nav>
       </aside>
 
-      <div className="min-w-0 flex-1 overflow-y-auto bg-black p-4 sm:p-6 lg:p-8">
+      <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto bg-black px-4 pb-4 sm:px-6 sm:pb-6 lg:px-8 lg:pb-8">
+        <div className="pt-4 sm:pt-6 lg:pt-8">
         <header className="mb-8 border-b border-white/[0.06] pb-6">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-500/80">Reference</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight text-white sm:text-2xl">Routing API</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-neutral-500">
-            REST API nội bộ — chạy thử trực tiếp từng endpoint, copy cURL / fetch, xem response live.
+            Mỗi endpoint có contract đầy đủ — <span className="text-emerald-400/90">In</span> (request) và{" "}
+            <span className="text-cyan-400/90">Out</span> (response), kèm Try it live.
           </p>
         </header>
 
-        <div className="panel-black mb-8 rounded-2xl p-5">
-          <h2 className="text-sm font-semibold text-white">Response envelope</h2>
-          <p className="mt-2 text-xs leading-relaxed text-neutral-500">
-            Thành công:{" "}
-            <code className="text-neutral-400">{`{ "success": true, "data": … }`}</code>. Lỗi:{" "}
-            <code className="text-neutral-400">{`{ "success": false, "message": "…" }`}</code>.
-          </p>
+        <div className="mb-8 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-emerald-500/15 bg-emerald-950/20 p-4">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">In · Request</p>
+            <p className="mt-2 text-xs leading-relaxed text-neutral-500">
+              Query string (GET) hoặc JSON body (POST). Field có <span className="text-rose-400">*</span> là bắt buộc.
+            </p>
+          </div>
+          <div className="rounded-xl border border-cyan-500/15 bg-cyan-950/20 p-4">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">Out · Response</p>
+            <p className="mt-2 text-xs leading-relaxed text-neutral-500">
+              Thường <code className="text-neutral-400">{`{ success, data }`}</code> — probe/status trả flat{" "}
+              <code className="text-neutral-400">{`{ success, osrm, … }`}</code>.
+            </p>
+          </div>
         </div>
 
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -258,6 +234,7 @@ export default function ApiDocsPage() {
             </table>
           </div>
         </div>
+        </div>
 
         {grouped.length === 0 ? (
           <p className="text-sm text-neutral-600">Không tìm thấy endpoint.</p>
@@ -268,7 +245,7 @@ export default function ApiDocsPage() {
                 <h2 className="text-lg font-semibold text-white">{cat.label}</h2>
                 <p className="mt-1 text-sm text-neutral-500">{cat.description}</p>
               </div>
-              <div className="space-y-10">
+              <div className="space-y-12">
                 {items.map((ep) => (
                   <EndpointSection key={ep.id} ep={ep} />
                 ))}

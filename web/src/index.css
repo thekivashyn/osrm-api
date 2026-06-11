@@ -17,6 +17,40 @@ body {
   @apply bg-[#06080c] text-slate-100 font-sans antialiased min-h-full;
 }
 
+/* Clickable / interactive — always show pointer (or not-allowed when disabled) */
+:where(
+  button:not(:disabled),
+  a[href],
+  label:has(input, select, textarea),
+  select:not(:disabled),
+  summary,
+  input[type="submit"]:not(:disabled),
+  input[type="button"]:not(:disabled),
+  input[type="reset"]:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"]:not([aria-disabled="true"]),
+  [role="link"],
+  [role="menuitem"],
+  [role="option"],
+  tr[class*="hover:bg"],
+  .clickable
+) {
+  cursor: pointer;
+}
+
+:where(
+  button:disabled,
+  input:disabled,
+  select:disabled,
+  textarea:disabled,
+  [aria-disabled="true"]
+) {
+  cursor: not-allowed;
+}
+
 body:not(.playground-active) {
   background-color: #06080c;
   background-image:
