@@ -19,10 +19,14 @@ function pickResult(
   onPick: (r: GeocodeResult) => void,
   onChange: (v: string) => void,
   close: () => void,
+  input: HTMLInputElement | null,
+  skipSearch: { current: boolean },
 ) {
+  skipSearch.current = true;
   onPick(r);
   onChange(r.displayName);
   close();
+  input?.blur();
 }
 
 export function SearchField({
@@ -50,6 +54,7 @@ export function SearchField({
   const anchorRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const skipSearchRef = useRef(false);
   const biasRef = useRef(bias);
   biasRef.current = bias;
 
@@ -72,6 +77,10 @@ export function SearchField({
   }, []);
 
   const runSearch = useCallback(async (q: string) => {
+    if (skipSearchRef.current) {
+      skipSearchRef.current = false;
+      return;
+    }
     if (q.trim().length < 2) {
       setResults([]);
       setError(null);
@@ -158,7 +167,7 @@ export function SearchField({
                     className="w-full px-3 py-2 text-left hover:bg-white/[0.06] active:bg-white/[0.08]"
                     onPointerDown={(e) => {
                       e.preventDefault();
-                      pickResult(r, onPick, onChange, close);
+                      pickResult(r, onPick, onChange, close, inputRef.current, skipSearchRef);
                     }}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -211,7 +220,7 @@ export function SearchField({
           onKeyDown={(e) => {
             if (e.key === "Enter" && results[0]) {
               e.preventDefault();
-              pickResult(results[0], onPick, onChange, close);
+              pickResult(results[0], onPick, onChange, close, inputRef.current, skipSearchRef);
             }
             if (e.key === "Escape") close();
           }}

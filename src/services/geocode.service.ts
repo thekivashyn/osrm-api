@@ -339,7 +339,7 @@ function snapToAlleyNeighbour(
     ...best,
     properties: {
       ...best.properties,
-      name: `${exact} ${snap.street} (ước lượng)`,
+      name: `${exact} ${snap.street}`,
       housenumber: exact,
       match_type: "interpolated",
     },

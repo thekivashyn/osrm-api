@@ -335,7 +335,8 @@ describe("searchAddress — Pelias", () => {
     });
 
     // 25 is closer to 18 than to 80 → snap to 230/18's pin, marked estimate.
-    expect(results[0]?.displayName).toContain("230/25 Lạc Long Quân (ước lượng)");
+    expect(results[0]?.displayName).toContain("230/25 Lạc Long Quân");
+    expect(results[0]?.displayName).not.toContain("ước lượng");
     expect(results[0]?.lat).toBeCloseTo(10.7615);
     expect(results[0]?.layer).toBe("address");
     // Street-layer noise is dropped for house-number queries.
