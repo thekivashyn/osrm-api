@@ -10,5 +10,7 @@ if ! curl -sf "http://127.0.0.1:5050/route/v1/driving/106.66,10.76;106.70,10.77?
 fi
 
 docker compose up -d --force-recreate
-echo "Docker recreated with 127.0.0.1 port binding."
+echo "Docker recreated: localhost ports, OSRM mmap, Nominatim Postgres tuning."
 ss -tlnp | grep -E "5050|5051|9091|8080" || true
+curl -sf "http://127.0.0.1:5050/route/v1/driving/106.66,10.76;106.70,10.77?overview=false" | head -c 80
+echo ""
