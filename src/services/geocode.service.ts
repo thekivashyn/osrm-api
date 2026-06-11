@@ -275,7 +275,12 @@ export async function searchAddress(
   sets.forEach((features, i) => {
     let kept = features;
     if (variants[i]?.streetLayerOnly) {
-      kept = features.filter((f) => f.properties?.layer === "street");
+      // Only actual alleys — drops fuzzy hits like "Phạm Văn Ngô" street.
+      kept = features.filter(
+        (f) =>
+          f.properties?.layer === "street" &&
+          /^(hẻm|ngõ|ngách)\s/i.test(f.properties?.name ?? f.properties?.label ?? ""),
+      );
     }
     if (kept.length === 0) return;
     const fallbackOnly = kept.every((f) => f.properties?.match_type === "fallback");
