@@ -1,12 +1,2 @@
-# Overlay for dev-only external access — use with UFW allowlist (see allow-dev-ip.sh).
-# Do NOT use without firewall rules restricting 5050/5051/9091 to trusted IPs.
-
-services:
-  osrm:
-    ports:
-      - "5050:5000"
-      - "5051:5001"
-
-  nominatim:
-    ports:
-      - "9091:8080"
+# Reference only — dev access is applied via scripts/allow-dev-ip.sh (sed on docker-compose.yml + UFW).
+# Compose port arrays merge; overlay would bind both 127.0.0.1 and 0.0.0.0 and fail.
