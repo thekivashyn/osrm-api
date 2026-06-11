@@ -60,6 +60,8 @@ type PeliasFeature = {
     name?: string;
     distance?: number;
     layer?: string;
+    /** "exact" | "interpolated" | "fallback" — only set by /v1/search. */
+    match_type?: string;
   };
 };
 
@@ -179,7 +181,10 @@ function buildQueryVariants(q: string): string[] {
   const head = (q.split(",")[0] ?? "").trim();
   if (head && head !== q) variants.push(head);
   const alley = head.match(/^(\d+)\/[\d/]+\s+(.+)/);
-  if (alley && !/^hẻm\s/i.test(head)) variants.push(`Hẻm ${alley[1]} ${alley[2]}`);
+  if (alley && !/^(hẻm|ngõ|ngách)\s/i.test(head)) {
+    variants.push(`Hẻm ${alley[1]} ${alley[2]}`); // miền Nam
+    variants.push(`Ngõ ${alley[1]} ${alley[2]}`); // miền Bắc
+  }
   const alleyMouth = head.replace(/^(\d+)\/[\d/]+\s+/, "$1 ");
   if (alleyMouth && alleyMouth !== head) variants.push(alleyMouth);
   const streetOnly = head.replace(/^[\d/]+\s+/, "");
@@ -235,52 +240,57 @@ export async function searchAddress(
   const bias = parseBiasCoords(options.lat, options.lng);
   const variants = buildQueryVariants(q);
 
-  let nearby: PeliasFeature[] = [];
+  // Google-style fan-out: every interpretation of the query runs in
+  // parallel (near the GPS bias when given), plus the original text
+  // nationwide for explicit cross-city intent ("Hồ Gươm Hà Nội" from HCM).
+  const queries = variants.map((v) => peliasQuery(v, cappedLimit, bias, bias != null));
   if (bias) {
-    for (const variant of variants) {
-      nearby = await peliasQuery(variant, cappedLimit, bias, true);
-      if (nearby.length > 0) break;
+    queries.push(peliasQuery(q, cappedLimit, bias, false));
+  }
+  const settled = await Promise.allSettled(queries);
+  if (settled.every((s) => s.status === "rejected")) {
+    throw (settled[0] as PromiseRejectedResult).reason;
+  }
+
+  const sets = settled.map((s) => (s.status === "fulfilled" ? s.value : []));
+  const national = bias ? (sets.pop() ?? []) : [];
+
+  // Variant order encodes interpretation precision (verbatim → hẻm/ngõ →
+  // alley mouth → street). Sets that are pure `match_type: "fallback"`
+  // guesses (random street segments for an unmatched house number) rank
+  // below every exact set.
+  const exactSets: PeliasFeature[][] = [];
+  const fallbackSets: PeliasFeature[][] = [];
+  for (const features of sets) {
+    if (features.length === 0) continue;
+    const fallbackOnly = features.every((f) => f.properties?.match_type === "fallback");
+    (fallbackOnly ? fallbackSets : exactSets).push(features);
+  }
+
+  const merged: GeocodeResult[] = [];
+  const seen = new Set<string>();
+  const push = (r: GeocodeResult) => {
+    const key = r.displayName.trim().toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(r);
+  };
+
+  // Diversity pass: top slice of each interpretation, then national extras.
+  const DIVERSITY_CAP = 3;
+  const ordered = [...exactSets, ...fallbackSets];
+  for (const set of ordered) {
+    for (const r of mapPeliasFeatures(set, bias).slice(0, DIVERSITY_CAP)) push(r);
+  }
+  for (const r of mapPeliasFeatures(national, bias).slice(0, 2)) push(r);
+  // Fill pass: top up from already-ranked sets when diversity left slots.
+  if (merged.length < cappedLimit) {
+    for (const set of ordered) {
+      for (const r of mapPeliasFeatures(set, bias).slice(DIVERSITY_CAP)) push(r);
     }
   }
 
-  // Original text nationwide: resolves explicit cross-city intent
-  // ("Hồ Gươm Hà Nội" typed while GPS is in HCM). When bias gave hits,
-  // failures here must not break the response.
-  let national: PeliasFeature[] = [];
-  if (bias) {
-    try {
-      national = await peliasQuery(q, cappedLimit, bias, false);
-    } catch {
-      national = [];
-    }
-  } else {
-    for (const variant of variants) {
-      national = await peliasQuery(variant, cappedLimit, null, false);
-      if (national.length > 0) break;
-    }
-  }
-
-  const nearbyResults = mapPeliasFeatures(nearby, bias);
-  nearbyResults.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
-
-  const seen = new Set(nearbyResults.map((r) => `${r.lat.toFixed(6)},${r.lng.toFixed(6)}`));
-  // National pool keeps Pelias relevance order — distance sort would bury
-  // the intended far-city result under fuzzy nearby matches.
-  const extras = mapPeliasFeatures(national, bias).filter(
-    (r) => !seen.has(`${r.lat.toFixed(6)},${r.lng.toFixed(6)}`),
-  );
-
-  let results: GeocodeResult[];
-  if (nearbyResults.length === 0) {
-    results = extras.slice(0, cappedLimit);
-  } else {
-    const extraSlots = Math.min(2, extras.length);
-    results = [
-      ...nearbyResults.slice(0, cappedLimit - extraSlots),
-      ...extras.slice(0, extraSlots),
-    ];
-  }
-
+  const results = merged.slice(0, cappedLimit);
   geocodeCache.set(cacheKey, results);
   return results;
 }

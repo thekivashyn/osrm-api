@@ -88,12 +88,70 @@ describe("searchAddress — Pelias", () => {
       "230/25 Lạc Long Quân, Bình Thới, HCM",
       "230/25 Lạc Long Quân",
       "Hẻm 230 Lạc Long Quân",
+      "Ngõ 230 Lạc Long Quân",
       "230 Lạc Long Quân",
       "Lạc Long Quân",
       // original retried nationwide for cross-city intent
       "230/25 Lạc Long Quân, Bình Thới, HCM",
     ]);
     expect(results[0]?.displayName).toContain("Quận 11");
+  });
+
+  test("ranks exact alley match above fallback street guesses", async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const text = url.searchParams.get("text") ?? "";
+      if (text === "Hẻm 230 lạc long quan") {
+        return Response.json({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [106.643, 10.762] },
+              properties: {
+                label: "Hẻm 230 Lạc Long Quân, TP.HCM",
+                layer: "street",
+                match_type: "exact",
+              },
+            },
+          ],
+        });
+      }
+      if (text === "230/25 lạc long quan") {
+        return Response.json({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [106.652, 10.782] },
+              properties: {
+                label: "Hẻm 958 Lạc Long Quân, TP.HCM",
+                layer: "street",
+                match_type: "fallback",
+              },
+            },
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [106.651, 10.781] },
+              properties: {
+                label: "Hẻm 888 Lạc Long Quân, TP.HCM",
+                layer: "street",
+                match_type: "fallback",
+              },
+            },
+          ],
+        });
+      }
+      return Response.json({ type: "FeatureCollection", features: [] });
+    }) as typeof fetch;
+
+    const results = await searchAddress("230/25 lạc long quan", 6, {
+      lat: 10.78,
+      lng: 106.65,
+    });
+
+    expect(results[0]?.displayName).toContain("Hẻm 230");
+    expect(results.map((r) => r.displayName)).toContain("Hẻm 958 Lạc Long Quân, TP.HCM");
   });
 
   test("retries nationwide when nothing matches near the bias", async () => {
