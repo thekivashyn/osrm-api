@@ -454,6 +454,18 @@ export async function searchAddress(
     if (pins.length > 0) ranked = pins;
   }
 
+  // Compound queries ("230/25 X"): the exact house (or its alley-snap
+  // estimate) must outrank everything, then same-alley neighbours, then the
+  // fuzzy remainder — regardless of which variant set produced them.
+  const compound = (q.split(",")[0] ?? "").match(/(\d+(?:\/\d+)*)\/(\d+)\s/);
+  if (compound) {
+    const exactToken = `${compound[1]}/${compound[2]} `;
+    const alleyToken = `${compound[1]}/`;
+    const tier = (r: GeocodeResult) =>
+      r.displayName.includes(exactToken) ? 0 : r.displayName.includes(alleyToken) ? 1 : 2;
+    ranked = [...ranked].sort((a, b) => tier(a) - tier(b));
+  }
+
   const results = ranked.slice(0, cappedLimit);
   geocodeCache.set(cacheKey, results);
   return results;
