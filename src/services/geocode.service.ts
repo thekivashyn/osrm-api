@@ -176,20 +176,31 @@ const NEARBY_RADIUS_KM = 75;
  *    "Hẻm 230 Lạc Long Quân" (OSM maps alleys as streets),
  *    "230 Lạc Long Quân" (alley mouth), "Lạc Long Quân"]
  */
-function buildQueryVariants(q: string): string[] {
-  const variants = [q];
+type QueryVariant = {
+  text: string;
+  /** Synthetic "Hẻm/Ngõ N <street>" guess — only street-layer hits make sense. */
+  streetLayerOnly?: boolean;
+};
+
+function buildQueryVariants(q: string): QueryVariant[] {
+  const variants: QueryVariant[] = [{ text: q }];
   const head = (q.split(",")[0] ?? "").trim();
-  if (head && head !== q) variants.push(head);
+  if (head && head !== q) variants.push({ text: head });
   const alley = head.match(/^(\d+)\/[\d/]+\s+(.+)/);
   if (alley && !/^(hẻm|ngõ|ngách)\s/i.test(head)) {
-    variants.push(`Hẻm ${alley[1]} ${alley[2]}`); // miền Nam
-    variants.push(`Ngõ ${alley[1]} ${alley[2]}`); // miền Bắc
+    variants.push({ text: `Hẻm ${alley[1]} ${alley[2]}`, streetLayerOnly: true }); // miền Nam
+    variants.push({ text: `Ngõ ${alley[1]} ${alley[2]}`, streetLayerOnly: true }); // miền Bắc
   }
   const alleyMouth = head.replace(/^(\d+)\/[\d/]+\s+/, "$1 ");
-  if (alleyMouth && alleyMouth !== head) variants.push(alleyMouth);
+  if (alleyMouth && alleyMouth !== head) variants.push({ text: alleyMouth });
   const streetOnly = head.replace(/^[\d/]+\s+/, "");
-  if (streetOnly && streetOnly !== head) variants.push(streetOnly);
-  return [...new Set(variants)];
+  if (streetOnly && streetOnly !== head) variants.push({ text: streetOnly });
+  const seen = new Set<string>();
+  return variants.filter((v) => {
+    if (seen.has(v.text)) return false;
+    seen.add(v.text);
+    return true;
+  });
 }
 
 async function peliasQuery(
@@ -243,7 +254,7 @@ export async function searchAddress(
   // Google-style fan-out: every interpretation of the query runs in
   // parallel (near the GPS bias when given), plus the original text
   // nationwide for explicit cross-city intent ("Hồ Gươm Hà Nội" from HCM).
-  const queries = variants.map((v) => peliasQuery(v, cappedLimit, bias, bias != null));
+  const queries = variants.map((v) => peliasQuery(v.text, cappedLimit, bias, bias != null));
   if (bias) {
     queries.push(peliasQuery(q, cappedLimit, bias, false));
   }
@@ -261,11 +272,15 @@ export async function searchAddress(
   // below every exact set.
   const exactSets: PeliasFeature[][] = [];
   const fallbackSets: PeliasFeature[][] = [];
-  for (const features of sets) {
-    if (features.length === 0) continue;
-    const fallbackOnly = features.every((f) => f.properties?.match_type === "fallback");
-    (fallbackOnly ? fallbackSets : exactSets).push(features);
-  }
+  sets.forEach((features, i) => {
+    let kept = features;
+    if (variants[i]?.streetLayerOnly) {
+      kept = features.filter((f) => f.properties?.layer === "street");
+    }
+    if (kept.length === 0) return;
+    const fallbackOnly = kept.every((f) => f.properties?.match_type === "fallback");
+    (fallbackOnly ? fallbackSets : exactSets).push(kept);
+  });
 
   const merged: GeocodeResult[] = [];
   const seen = new Set<string>();
