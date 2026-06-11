@@ -72,7 +72,12 @@ describe("searchAddress — Pelias", () => {
               {
                 type: "Feature",
                 geometry: { type: "Point", coordinates: [106.643, 10.763] },
-                properties: { label: "Lạc Long Quân, Quận 11, TP.HCM", layer: "street" },
+                properties: {
+                  name: "Lạc Long Quân",
+                  label: "Lạc Long Quân, Quận 11, TP.HCM",
+                  layer: "street",
+                  region: "Thành phố Hồ Chí Minh",
+                },
               },
             ]
           : [],
@@ -86,17 +91,25 @@ describe("searchAddress — Pelias", () => {
 
     expect(requestedTexts).toEqual([
       "230/25 Lạc Long Quân, Bình Thới, HCM",
+      // 2025 admin-reorg rewrites (Bình Thới = phường mới ← Quận 11 cũ)
+      "230/25 Lạc Long Quân, Quận 11, Thành phố Hồ Chí Minh",
+      "230/25 Lạc Long Quân, Phường 3, Quận 11, Thành phố Hồ Chí Minh",
+      "230/25 Lạc Long Quân, Phường Bình Thới, Thành phố Hồ Chí Minh",
       "230/25 Lạc Long Quân",
+      "230 Lạc Long Quân", // alley-snap (autocomplete, same-alley neighbours)
       "25 Hẻm 230 Lạc Long Quân",
       "25 Ngõ 230 Lạc Long Quân",
       "Hẻm 230 Lạc Long Quân",
       "Ngõ 230 Lạc Long Quân",
-      "230 Lạc Long Quân",
+      "230 Lạc Long Quân", // alley mouth (/v1/search, interpolation)
       "Lạc Long Quân",
       // original retried nationwide for cross-city intent
       "230/25 Lạc Long Quân, Bình Thới, HCM",
     ]);
-    expect(results[0]?.displayName).toContain("Quận 11");
+    // Display: tên + phường mới + tỉnh/TP mới, quận bị bỏ.
+    expect(results[0]?.displayName).toContain("Lạc Long Quân");
+    expect(results[0]?.displayName).toContain("Thành phố Hồ Chí Minh");
+    expect(results[0]?.displayName).not.toContain("Quận 11");
   });
 
   test("ranks exact alley match above fallback street guesses", async () => {
@@ -170,8 +183,8 @@ describe("searchAddress — Pelias", () => {
     });
 
     expect(results[0]?.displayName).toContain("Hẻm 230");
-    expect(results.map((r) => r.displayName)).toContain("Hẻm 958 Lạc Long Quân, TP.HCM");
-    expect(results.map((r) => r.displayName)).not.toContain("25 Đường Ngô Y Linh, TP.HCM");
+    expect(results.some((r) => r.displayName.includes("Hẻm 958"))).toBe(true);
+    expect(results.some((r) => r.displayName.includes("Ngô Y Linh"))).toBe(false);
   });
 
   test("retries nationwide when nothing matches near the bias", async () => {
@@ -187,7 +200,12 @@ describe("searchAddress — Pelias", () => {
               {
                 type: "Feature",
                 geometry: { type: "Point", coordinates: [105.852, 21.029] },
-                properties: { label: "Hồ Gươm, Hà Nội", layer: "venue" },
+                properties: {
+                  name: "Hồ Gươm",
+                  label: "Hồ Gươm, Hà Nội",
+                  layer: "venue",
+                  region: "Thành phố Hà Nội",
+                },
               },
             ]
           : [],
@@ -212,14 +230,24 @@ describe("searchAddress — Pelias", () => {
               {
                 type: "Feature",
                 geometry: { type: "Point", coordinates: [105.852, 21.029] },
-                properties: { label: "Hồ Hoàn Kiếm, Hà Nội", layer: "venue", distance: 1130 },
+                properties: {
+                  name: "Hồ Hoàn Kiếm",
+                  layer: "venue",
+                  distance: 1130,
+                  region: "Thành phố Hà Nội",
+                },
               },
             ]
           : [
               {
                 type: "Feature",
                 geometry: { type: "Point", coordinates: [106.695, 10.782] },
-                properties: { label: "Hồ Con Rùa, TP.HCM", layer: "venue", distance: 1.2 },
+                properties: {
+                  name: "Hồ Con Rùa",
+                  layer: "venue",
+                  distance: 1.2,
+                  region: "Thành phố Hồ Chí Minh",
+                },
               },
             ],
       });
@@ -227,22 +255,91 @@ describe("searchAddress — Pelias", () => {
 
     const results = await searchAddress("Hồ Hoàn Kiếm Hà Nội", 5, { lat: 10.78, lng: 106.69 });
 
-    expect(results.map((r) => r.displayName)).toEqual([
-      "Hồ Con Rùa, TP.HCM",
-      "Hồ Hoàn Kiếm, Hà Nội",
-    ]);
+    expect(results[0]?.displayName).toContain("Hồ Con Rùa");
+    expect(results[0]?.displayName).toContain("Thành phố Hồ Chí Minh");
+    expect(results[1]?.displayName).toContain("Hồ Hoàn Kiếm");
+    expect(results[1]?.displayName).toContain("Thành phố Hà Nội");
   });
 
-  test("uses /v1/search for queries with digits", async () => {
-    let requestedUrl = "";
+  test("uses /v1/search for plain house numbers (interpolation)", async () => {
+    const paths: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
-      requestedUrl = String(input);
+      paths.push(new URL(String(input)).pathname);
+      return Response.json({ type: "FeatureCollection", features: [] });
+    }) as typeof fetch;
+
+    await searchAddress("230 lac long quan", 5, { lat: 10.78, lng: 106.69 });
+
+    expect(paths[0]).toContain("/v1/search");
+  });
+
+  test("compound house numbers skip libpostal → /v1/autocomplete", async () => {
+    const verbatimPaths: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.searchParams.get("text") === "230/25 lac long") {
+        verbatimPaths.push(url.pathname);
+      }
       return Response.json({ type: "FeatureCollection", features: [] });
     }) as typeof fetch;
 
     await searchAddress("230/25 lac long", 5, { lat: 10.78, lng: 106.69 });
 
-    expect(new URL(requestedUrl).pathname).toContain("/v1/search");
+    // libpostal would parse "230/25" into unit+housenumber and never match
+    // the indexed compound docs, so these must go through autocomplete.
+    expect(verbatimPaths.length).toBeGreaterThan(0);
+    expect(verbatimPaths.every((p) => p.includes("/v1/autocomplete"))).toBe(true);
+  });
+
+  test("snaps to the closest same-alley neighbour when exact pin missing", async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const isSnap =
+        url.pathname.includes("autocomplete") &&
+        url.searchParams.get("text") === "230 Lạc Long Quân";
+      return Response.json({
+        type: "FeatureCollection",
+        features: isSnap
+          ? [
+              {
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [106.6421, 10.7615] },
+                properties: {
+                  name: "230/18 Hẻm 230 Lạc Long Quân",
+                  housenumber: "230/18",
+                  street: "Hẻm 230 Lạc Long Quân",
+                  layer: "address",
+                  source: "overture",
+                  region: "Thành phố Hồ Chí Minh",
+                },
+              },
+              {
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [106.6429, 10.7611] },
+                properties: {
+                  name: "230/80 Hẻm 230 Lạc Long Quân",
+                  housenumber: "230/80",
+                  street: "Hẻm 230 Lạc Long Quân",
+                  layer: "address",
+                  region: "Thành phố Hồ Chí Minh",
+                },
+              },
+            ]
+          : [],
+      });
+    }) as typeof fetch;
+
+    const results = await searchAddress("230/25 Lạc Long Quân", 5, {
+      lat: 10.76,
+      lng: 106.64,
+    });
+
+    // 25 is closer to 18 than to 80 → snap to 230/18's pin, marked estimate.
+    expect(results[0]?.displayName).toContain("230/25 Lạc Long Quân (ước lượng)");
+    expect(results[0]?.lat).toBeCloseTo(10.7615);
+    expect(results[0]?.layer).toBe("address");
+    // Street-layer noise is dropped for house-number queries.
+    expect(results.every((r) => r.layer !== "street")).toBe(true);
   });
 
   test("returns empty array when no features", async () => {

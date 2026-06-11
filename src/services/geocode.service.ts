@@ -2,6 +2,12 @@ import { config } from "../config/env";
 import { AppError } from "../utils/response";
 import { haversineKm } from "../utils/geo";
 import { TtlCache } from "../utils/ttl-cache";
+import {
+  currentProvinceName,
+  expandAdminVariants,
+  nearestCurrentWard,
+  normalizeAdminText,
+} from "./vn-admin";
 
 export interface GeocodeResult {
   lat: number;
@@ -62,6 +68,11 @@ type PeliasFeature = {
     layer?: string;
     /** "exact" | "interpolated" | "fallback" — only set by /v1/search. */
     match_type?: string;
+    housenumber?: string;
+    street?: string;
+    /** Province/city — may still be the pre-2025 hierarchy (WOF). */
+    region?: string;
+    locality?: string;
   };
 };
 
@@ -74,6 +85,36 @@ function peliasBaseUrl(): string {
   return config.peliasUrl.replace(/\/$/, "");
 }
 
+/** Layers that describe a point on a street, where a ward label makes sense. */
+const WARD_LABEL_LAYERS = new Set(["address", "venue", "street"]);
+
+/**
+ * Display format per product decision: "<name>, <phường mới>, <tỉnh/TP mới>".
+ * Drops the abolished district level and maps provinces through the 2025
+ * reorganization; ward comes from the nearest current-era ward centroid.
+ */
+function formatDisplayName(f: PeliasFeature): string {
+  const [lng, lat] = f.geometry.coordinates;
+  const props = f.properties ?? {};
+  const name = props.name ?? (props.label ?? "").split(",")[0]?.trim() ?? `${lat}, ${lng}`;
+  const provinceRaw = props.region ?? props.locality;
+
+  const parts = [name];
+  if (props.layer && WARD_LABEL_LAYERS.has(props.layer)) {
+    const wardInfo = nearestCurrentWard(lat, lng, provinceRaw);
+    if (wardInfo && !normalizeAdminText(name).includes(normalizeAdminText(wardInfo.ward))) {
+      parts.push(wardInfo.ward);
+    }
+  }
+  if (provinceRaw) {
+    const province = currentProvinceName(provinceRaw);
+    if (!normalizeAdminText(name).includes(normalizeAdminText(province))) {
+      parts.push(province);
+    }
+  }
+  return parts.join(", ");
+}
+
 function mapPeliasFeatures(
   features: PeliasFeature[],
   bias: { lat: number; lng: number } | null,
@@ -81,11 +122,10 @@ function mapPeliasFeatures(
   return features.map((f) => {
     const [lng, lat] = f.geometry.coordinates;
     const props = f.properties ?? {};
-    const displayName = props.label ?? props.name ?? `${lat}, ${lng}`;
     const result: GeocodeResult = {
       lat,
       lng,
-      displayName,
+      displayName: formatDisplayName(f),
       layer: props.layer,
     };
     if (typeof props.distance === "number" && Number.isFinite(props.distance)) {
@@ -182,10 +222,20 @@ type QueryVariant = {
   streetLayerOnly?: boolean;
   /** Result label/name must contain this (lowercase) — kills fuzzy strays. */
   requireText?: string;
+  /**
+   * "230/25 X" with no exact data: find neighbours in the same alley
+   * ("230/18 X" crowd-sourced pins) and snap an estimated result to the
+   * closest house number. Runs through autocomplete (libpostal splits
+   * compound numbers, killing /v1/search for this case).
+   */
+  alleySnap?: { alley: string; house: string; street: string };
 };
 
 function buildQueryVariants(q: string): QueryVariant[] {
   const variants: QueryVariant[] = [{ text: q }];
+  // Pre/post-2025 admin reorg rewrites ("Bình Thới, HCM" → "Quận 11, TPHCM")
+  // rank as full-precision interpretations, right after the verbatim query.
+  for (const text of expandAdminVariants(q)) variants.push({ text });
   const head = (q.split(",")[0] ?? "").trim();
   if (head && head !== q) variants.push({ text: head });
   // "230/25 X" = house 25 inside alley 230; "269/22/4/25 X" = house 25
@@ -193,6 +243,11 @@ function buildQueryVariants(q: string): QueryVariant[] {
   const alley = head.match(/^(\d+(?:\/\d+)*)\/(\d+)\s+(.+)/);
   if (alley && !/^(hẻm|ngõ|ngách)\s/i.test(head)) {
     const [, chain, house, street] = alley;
+    // Crowd-sourced pins of neighbours in the same alley ("230/18 …").
+    variants.push({
+      text: `${chain} ${street}`,
+      alleySnap: { alley: chain as string, house: house as string, street: street as string },
+    });
     // House number on the alley street — exact OSM point or interpolated.
     // requireText pins results to the actual alley (no "Ngõ"→"Ngô" strays).
     variants.push({ text: `${house} Hẻm ${chain} ${street}`, requireText: `hẻm ${chain}` });
@@ -207,8 +262,11 @@ function buildQueryVariants(q: string): QueryVariant[] {
   if (streetOnly && streetOnly !== head) variants.push({ text: streetOnly });
   const seen = new Set<string>();
   return variants.filter((v) => {
-    if (seen.has(v.text)) return false;
-    seen.add(v.text);
+    // Same text may legitimately run twice with different semantics
+    // (alley-snap via autocomplete vs alley-mouth via /v1/search).
+    const key = `${v.text}|${v.alleySnap ? "snap" : v.streetLayerOnly ? "street" : (v.requireText ?? "")}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }
@@ -218,6 +276,7 @@ async function peliasQuery(
   size: number,
   bias: { lat: number; lng: number } | null,
   nearbyOnly: boolean,
+  forceAutocomplete = false,
 ): Promise<PeliasFeature[]> {
   const params: Record<string, string> = {
     text,
@@ -234,11 +293,57 @@ async function peliasQuery(
       params["boundary.circle.radius"] = String(NEARBY_RADIUS_KM);
     }
   }
-  // Digits suggest a structured address → /v1/search (libpostal parsing);
-  // plain names rank much better through /v1/autocomplete.
-  const endpoint = /\d/.test(text) ? "/v1/search" : "/v1/autocomplete";
+  // Compound numbers ("230/25") must skip /v1/search: libpostal splits them
+  // into unit+housenumber and never matches the indexed "230/25" docs, while
+  // autocomplete token-matches names directly. Other digit-bearing queries
+  // get structured parsing + interpolation via /v1/search; plain names rank
+  // much better through /v1/autocomplete.
+  const compound = /\d+\/\d+/.test(text);
+  const endpoint =
+    forceAutocomplete || compound || !/\d/.test(text) ? "/v1/autocomplete" : "/v1/search";
   const data = await peliasFetch(buildPeliasUrl(endpoint, params));
   return data.features;
+}
+
+/**
+ * "230/25 Lạc Long Quân" with no exact pin: crowd-sourced data usually has
+ * a neighbour in the same alley ("230/18 Hẻm 230 Lạc Long Quân"). Snap to
+ * the closest house number and mark the result as an estimate — same
+ * behaviour as commercial geocoders for unmapped house numbers.
+ */
+function snapToAlleyNeighbour(
+  features: PeliasFeature[],
+  snap: { alley: string; house: string; street: string },
+): PeliasFeature | null {
+  const prefix = `${snap.alley}/`;
+  const streetNorm = normalizeAdminText(snap.street);
+  const candidates = features.filter((f) => {
+    const p = f.properties ?? {};
+    if (p.layer !== "address" || !p.housenumber?.startsWith(prefix)) return false;
+    return normalizeAdminText(`${p.street ?? ""} ${p.name ?? ""}`).includes(streetNorm);
+  });
+  if (candidates.length === 0) return null;
+
+  const target = Number(snap.house);
+  const suffixNumber = (housenumber: string) =>
+    Number(housenumber.slice(prefix.length).match(/^\d+/)?.[0] ?? Number.NaN);
+  const distance = (f: PeliasFeature) => {
+    const n = suffixNumber(f.properties?.housenumber ?? "");
+    return Number.isNaN(n) ? Number.POSITIVE_INFINITY : Math.abs(n - target);
+  };
+  const best = candidates.reduce((a, b) => (distance(b) < distance(a) ? b : a));
+
+  const exact = `${snap.alley}/${snap.house}`;
+  if (best.properties?.housenumber === exact) return best;
+  return {
+    ...best,
+    properties: {
+      ...best.properties,
+      name: `${exact} ${snap.street} (ước lượng)`,
+      housenumber: exact,
+      match_type: "interpolated",
+    },
+  };
 }
 
 export async function searchAddress(
@@ -264,7 +369,15 @@ export async function searchAddress(
   // Google-style fan-out: every interpretation of the query runs in
   // parallel (near the GPS bias when given), plus the original text
   // nationwide for explicit cross-city intent ("Hồ Gươm Hà Nội" from HCM).
-  const queries = variants.map((v) => peliasQuery(v.text, cappedLimit, bias, bias != null));
+  const queries = variants.map((v) =>
+    peliasQuery(
+      v.text,
+      v.alleySnap ? 10 : cappedLimit, // snap wants many same-alley candidates
+      bias,
+      bias != null,
+      Boolean(v.alleySnap),
+    ),
+  );
   if (bias) {
     queries.push(peliasQuery(q, cappedLimit, bias, false));
   }
@@ -285,6 +398,11 @@ export async function searchAddress(
   sets.forEach((features, i) => {
     const variant = variants[i];
     let kept = features;
+    if (variant?.alleySnap) {
+      const snapped = snapToAlleyNeighbour(features, variant.alleySnap);
+      if (snapped) exactSets.push([snapped]);
+      return;
+    }
     if (variant?.streetLayerOnly) {
       // Only actual alleys — drops fuzzy hits like "Phạm Văn Ngô" street.
       kept = kept.filter(
@@ -328,7 +446,15 @@ export async function searchAddress(
     }
   }
 
-  const results = merged.slice(0, cappedLimit);
+  // Address intent ("số nhà" queries): pin-level results only — street
+  // segments are noise when any real address or venue matched.
+  let ranked = merged;
+  if (/\d/.test(q)) {
+    const pins = merged.filter((r) => r.layer === "address" || r.layer === "venue");
+    if (pins.length > 0) ranked = pins;
+  }
+
+  const results = ranked.slice(0, cappedLimit);
   geocodeCache.set(cacheKey, results);
   return results;
 }

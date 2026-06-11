@@ -55,18 +55,21 @@ SELECT id,
        trim(names.primary) AS name,
        round(bbox.xmin, 6) AS lon,
        round(bbox.ymin, 6) AS lat,
+       confidence AS conf,
        categories.primary AS category,
        trim(addresses[1].freeform) AS addr,
        addresses[1].locality AS locality
 FROM read_parquet('$S3_BASE/$RELEASE/theme=places/type=place/*', hive_partitioning=1)
 WHERE bbox.xmin BETWEEN 102.14 AND 109.47
   AND bbox.ymin BETWEEN 8.18 AND 23.39
-  AND confidence >= 0.5
+  AND confidence >= 0.3
   AND (addresses[1].country = 'VN' OR addresses IS NULL)
   AND coalesce(operating_status, '') <> 'closed'
   AND names.primary IS NOT NULL
   AND length(trim(names.primary)) BETWEEN 2 AND 120;
 
+-- Venue names need higher confidence (low-conf names are often spam);
+-- self-declared street addresses stay useful down to 0.3.
 COPY (
   SELECT id,
          'overture' AS source,
@@ -74,6 +77,7 @@ COPY (
          name, lat, lon,
          to_json(struct_pack(category := category, address := addr, locality := locality)) AS addendum_json_overture
   FROM vn
+  WHERE conf >= 0.5
 ) TO '/tmp/overture-venues-vn.csv' (HEADER, DELIMITER ',');
 
 COPY (
