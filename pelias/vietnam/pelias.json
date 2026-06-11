@@ -17,6 +17,9 @@
     }
   },
   "api": {
+    "targets": {
+      "auto_discover": true
+    },
     "services": {
       "placeholder": { "url": "http://placeholder:4100" },
       "pip": { "url": "http://pip:4200" },

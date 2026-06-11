@@ -20,6 +20,7 @@
     "osrm:down": "docker compose down",
     "osrm:logs": "docker logs -f osrm",
     "pelias:import": "sh scripts/pelias-import.sh",
+    "pelias:overture": "sh scripts/overture-places.sh",
     "pelias:up": "sh scripts/pelias-up.sh",
     "pelias:down": "cd pelias/vietnam && ../../.pelias-docker/pelias compose down",
     "pelias:logs": "cd pelias/vietnam && ../../.pelias-docker/pelias compose logs -f api",

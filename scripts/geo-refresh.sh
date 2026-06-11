@@ -32,6 +32,9 @@ su - pelias -c "cd '$ROOT/pelias/vietnam' && '$PELIAS' prepare polylines && '$PE
 su - pelias -c "cd '$ROOT/pelias/vietnam' && '$PELIAS' prepare interpolation"
 docker restart pelias_interpolation >/dev/null 2>&1 || true
 
+echo "==> Overture Places refresh (POI + crowd-sourced alley addresses)"
+sh "$ROOT/scripts/overture-places.sh" || echo "Overture refresh failed — keeping previous data."
+
 echo "==> Optimize index"
 curl -s -XPOST "http://127.0.0.1:9200/pelias/_refresh" >/dev/null || true
 curl -m 900 -s -XPOST "http://127.0.0.1:9200/pelias/_forcemerge?max_num_segments=1" >/dev/null || true
