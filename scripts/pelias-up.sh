@@ -8,6 +8,17 @@ if [ "$(uname -s)" = "Darwin" ] && [ "${PELIAS_ALLOW_LOCAL:-}" != "1" ]; then
 fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+
+if [ "$(id -u)" = "0" ] && [ -z "${PELIAS_AS_USER:-}" ]; then
+  if ! id pelias >/dev/null 2>&1; then
+    useradd -m -s /bin/bash pelias
+  fi
+  usermod -aG docker pelias 2>/dev/null || true
+  chown -R pelias:pelias "$ROOT/pelias" "$ROOT/.pelias-docker" 2>/dev/null || true
+  exec su - pelias -c "cd '$ROOT' && PELIAS_AS_USER=1 sh '$SCRIPT'"
+fi
+
 PROJECT="$ROOT/pelias/vietnam"
 PELIAS_DOCKER="$ROOT/.pelias-docker"
 
