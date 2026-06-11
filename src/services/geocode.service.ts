@@ -8,6 +8,12 @@ import {
   nearestCurrentWard,
   normalizeAdminText,
 } from "./vn-admin";
+import { estimateAlleyHousePosition } from "../utils/alley-geometry";
+import {
+  parsePlainHouseStreet,
+  snapToStreetHouse,
+  type StreetSnapInput,
+} from "../utils/street-interpolation";
 
 export interface GeocodeResult {
   lat: number;
@@ -17,6 +23,10 @@ export interface GeocodeResult {
   distanceKm?: number;
   /** Pelias layer: address, street, venue, locality, … */
   layer?: string;
+  /** Alley mouth on the main road — present for compound alley estimates (e.g. 230/25). */
+  alleyMouth?: { lat: number; lng: number };
+  /** True when coordinates were estimated from neighbours (not an indexed pin). */
+  estimated?: boolean;
 }
 
 export interface GeocodeSearchOptions {
@@ -73,6 +83,10 @@ type PeliasFeature = {
     /** Province/city — may still be the pre-2025 hierarchy (WOF). */
     region?: string;
     locality?: string;
+    id?: string;
+    gid?: string;
+    _alleyMouthLat?: number;
+    _alleyMouthLng?: number;
   };
 };
 
@@ -128,11 +142,19 @@ function mapPeliasFeatures(
       displayName: formatDisplayName(f),
       layer: props.layer,
     };
+    const mouthLat = (props as { _alleyMouthLat?: number })._alleyMouthLat;
+    const mouthLng = (props as { _alleyMouthLng?: number })._alleyMouthLng;
+    if (Number.isFinite(mouthLat) && Number.isFinite(mouthLng)) {
+      result.alleyMouth = { lat: mouthLat!, lng: mouthLng! };
+    }
     if (typeof props.distance === "number" && Number.isFinite(props.distance)) {
       // Pelias returns `distance` already in kilometers.
       result.distanceKm = props.distance;
     } else if (bias) {
       result.distanceKm = haversineKm(bias.lat, bias.lng, lat, lng);
+    }
+    if (props.match_type === "interpolated") {
+      result.estimated = true;
     }
     return result;
   });
@@ -207,6 +229,13 @@ export async function checkPeliasStatus(): Promise<{
 
 /** Results within this radius of the GPS bias are tried first, so a search
  *  in HCM never jumps to a same-named street in Hà Nội. */
+/** Tighter radius when hunting same-alley crowd pins (km). */
+const ALLEY_SNAP_RADIUS_KM = 3;
+
+/** Radius for gathering venue/address anchors on the same street (km). */
+const STREET_SNAP_RADIUS_KM = 12;
+
+/** Results within this radius of the GPS bias are tried first. */
 const NEARBY_RADIUS_KM = 75;
 
 /**
@@ -229,6 +258,8 @@ type QueryVariant = {
    * compound numbers, killing /v1/search for this case).
    */
   alleySnap?: { alley: string; house: string; street: string };
+  /** "865 Nguyễn Xiển" with no exact pin — interpolate from venue/address neighbours. */
+  streetSnap?: StreetSnapInput;
 };
 
 function buildQueryVariants(q: string): QueryVariant[] {
@@ -260,11 +291,13 @@ function buildQueryVariants(q: string): QueryVariant[] {
   if (alleyMouth && alleyMouth !== head) variants.push({ text: alleyMouth });
   const streetOnly = head.replace(/^[\d/]+\s+/, "");
   if (streetOnly && streetOnly !== head) variants.push({ text: streetOnly });
+  const plainHouse = parsePlainHouseStreet(head);
+  if (plainHouse) variants.push({ text: head, streetSnap: plainHouse });
   const seen = new Set<string>();
   return variants.filter((v) => {
     // Same text may legitimately run twice with different semantics
     // (alley-snap via autocomplete vs alley-mouth via /v1/search).
-    const key = `${v.text}|${v.alleySnap ? "snap" : v.streetLayerOnly ? "street" : (v.requireText ?? "")}`;
+    const key = `${v.text}|${v.alleySnap ? "snap" : v.streetSnap ? "street" : v.streetLayerOnly ? "street" : (v.requireText ?? "")}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -277,6 +310,7 @@ async function peliasQuery(
   bias: { lat: number; lng: number } | null,
   nearbyOnly: boolean,
   forceAutocomplete = false,
+  nearbyRadiusKm = NEARBY_RADIUS_KM,
 ): Promise<PeliasFeature[]> {
   const params: Record<string, string> = {
     text,
@@ -290,7 +324,7 @@ async function peliasQuery(
     if (nearbyOnly) {
       params["boundary.circle.lat"] = String(bias.lat);
       params["boundary.circle.lon"] = String(bias.lng);
-      params["boundary.circle.radius"] = String(NEARBY_RADIUS_KM);
+      params["boundary.circle.radius"] = String(nearbyRadiusKm);
     }
   }
   // Compound numbers ("230/25") must skip /v1/search: libpostal splits them
@@ -305,6 +339,40 @@ async function peliasQuery(
   return data.features;
 }
 
+function withAlleyMouth(
+  feature: PeliasFeature,
+  mouth: { lat: number; lng: number } | null,
+): PeliasFeature {
+  if (!mouth) return feature;
+  return {
+    ...feature,
+    properties: {
+      ...feature.properties,
+      _alleyMouthLat: mouth.lat,
+      _alleyMouthLng: mouth.lng,
+    },
+  };
+}
+
+function mouthFrom(mouthFeature: PeliasFeature | undefined): { lat: number; lng: number } | null {
+  if (!mouthFeature) return null;
+  const [lng, lat] = mouthFeature.geometry.coordinates;
+  return { lat, lng };
+}
+
+function matchesAlleyStreetFeature(
+  f: PeliasFeature,
+  chain: string,
+  streetNorm: string,
+): boolean {
+  const p = f.properties ?? {};
+  if (p.layer !== "street") return false;
+  const label = normalizeAdminText(`${p.name ?? ""} ${p.label ?? ""}`);
+  const escaped = chain.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\//g, "\\/");
+  if (!label.includes(streetNorm)) return false;
+  return new RegExp(`(?:^|[\\s,])(?:hem|ngo|ngach)\\s*${escaped}(?:\\s|,|$)`).test(label);
+}
+
 /**
  * "230/25 Lạc Long Quân" with no exact pin: crowd-sourced data usually has
  * a neighbour in the same alley ("230/18 Hẻm 230 Lạc Long Quân"). Snap to
@@ -314,36 +382,83 @@ async function peliasQuery(
 function snapToAlleyNeighbour(
   features: PeliasFeature[],
   snap: { alley: string; house: string; street: string },
-): PeliasFeature | null {
+): { feature: PeliasFeature; mouth: { lat: number; lng: number } | null } | null {
   const prefix = `${snap.alley}/`;
   const streetNorm = normalizeAdminText(snap.street);
+
+  const mouthFeature = features.find((f) => matchesAlleyStreetFeature(f, snap.alley, streetNorm));
+
   const candidates = features.filter((f) => {
     const p = f.properties ?? {};
     if (p.layer !== "address" || !p.housenumber?.startsWith(prefix)) return false;
     return normalizeAdminText(`${p.street ?? ""} ${p.name ?? ""}`).includes(streetNorm);
   });
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0 && !mouthFeature) return null;
 
   const target = Number(snap.house);
+  const exact = `${snap.alley}/${snap.house}`;
+  const exactHit = candidates.find((f) => f.properties?.housenumber === exact);
+  if (exactHit) {
+    const mouth = mouthFrom(mouthFeature);
+    return { feature: withAlleyMouth(exactHit, mouth), mouth };
+  }
+
   const suffixNumber = (housenumber: string) =>
     Number(housenumber.slice(prefix.length).match(/^\d+/)?.[0] ?? Number.NaN);
-  const distance = (f: PeliasFeature) => {
-    const n = suffixNumber(f.properties?.housenumber ?? "");
-    return Number.isNaN(n) ? Number.POSITIVE_INFINITY : Math.abs(n - target);
-  };
-  const best = candidates.reduce((a, b) => (distance(b) < distance(a) ? b : a));
 
-  const exact = `${snap.alley}/${snap.house}`;
-  if (best.properties?.housenumber === exact) return best;
-  return {
-    ...best,
-    properties: {
-      ...best.properties,
-      name: `${exact} ${snap.street}`,
-      housenumber: exact,
-      match_type: "interpolated",
+  const anchors = candidates
+    .map((f) => {
+      const n = suffixNumber(f.properties?.housenumber ?? "");
+      const [lng, lat] = f.geometry.coordinates;
+      return Number.isFinite(n) ? { house: n, lat, lng } : null;
+    })
+    .filter((a): a is { house: number; lat: number; lng: number } => a != null);
+
+  const mouth = mouthFrom(mouthFeature);
+
+  const estimated = estimateAlleyHousePosition(target, mouth, anchors);
+  if (!estimated) {
+    const best = candidates.reduce((a, b) => {
+      const da = Math.abs(suffixNumber(a.properties?.housenumber ?? "") - target);
+      const db = Math.abs(suffixNumber(b.properties?.housenumber ?? "") - target);
+      return db < da ? b : a;
+    });
+    return { feature: withAlleyMouth(best, mouth), mouth };
+  }
+
+  const [estLng, estLat] = estimated;
+  const template = candidates[0] ?? mouthFeature;
+  if (!template) return null;
+
+  const feature: PeliasFeature = withAlleyMouth(
+    {
+      ...template,
+      geometry: { type: "Point", coordinates: [estLng, estLat] },
+      properties: {
+        ...template.properties,
+        name: `${exact} ${snap.street}`,
+        housenumber: exact,
+        match_type: "interpolated",
+      },
     },
-  };
+    mouth,
+  );
+
+  return { feature, mouth };
+}
+
+function mergePeliasFeatures(a: PeliasFeature[], b: PeliasFeature[]): PeliasFeature[] {
+  const seen = new Set<string>();
+  const out: PeliasFeature[] = [];
+  for (const f of [...a, ...b]) {
+    const p = f.properties ?? {};
+    const [lng, lat] = f.geometry.coordinates;
+    const key = `${p.gid ?? p.id ?? ""}|${lat.toFixed(5)}|${lng.toFixed(5)}|${p.name ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(f);
+  }
+  return out;
 }
 
 export async function searchAddress(
@@ -365,29 +480,61 @@ export async function searchAddress(
 
   const bias = parseBiasCoords(options.lat, options.lng);
   const variants = buildQueryVariants(q);
+  const streetSnapInput = variants.find((v) => v.streetSnap)?.streetSnap;
 
-  // Google-style fan-out: every interpretation of the query runs in
-  // parallel (near the GPS bias when given), plus the original text
-  // nationwide for explicit cross-city intent ("Hồ Gươm Hà Nội" from HCM).
-  const queries = variants.map((v) =>
+  const queryPromises: Promise<PeliasFeature[]>[] = variants.map((v) =>
     peliasQuery(
       v.text,
-      v.alleySnap ? 10 : cappedLimit, // snap wants many same-alley candidates
+      v.alleySnap || v.streetSnap ? 25 : cappedLimit,
       bias,
       bias != null,
-      Boolean(v.alleySnap),
+      Boolean(v.alleySnap || v.streetSnap),
+      v.alleySnap
+        ? ALLEY_SNAP_RADIUS_KM
+        : v.streetSnap
+          ? STREET_SNAP_RADIUS_KM
+          : NEARBY_RADIUS_KM,
     ),
   );
-  if (bias) {
-    queries.push(peliasQuery(q, cappedLimit, bias, false));
+
+  let streetAnchorIdx = -1;
+  let nationalIdx = -1;
+  if (streetSnapInput) {
+    streetAnchorIdx = queryPromises.length;
+    queryPromises.push(
+      peliasQuery(
+        streetSnapInput.street,
+        25,
+        bias,
+        bias != null,
+        true,
+        STREET_SNAP_RADIUS_KM,
+      ),
+    );
   }
-  const settled = await Promise.allSettled(queries);
+  if (bias) {
+    nationalIdx = queryPromises.length;
+    queryPromises.push(peliasQuery(q, cappedLimit, bias, false));
+  }
+
+  const settled = await Promise.allSettled(queryPromises);
   if (settled.every((s) => s.status === "rejected")) {
     throw (settled[0] as PromiseRejectedResult).reason;
   }
 
-  const sets = settled.map((s) => (s.status === "fulfilled" ? s.value : []));
-  const national = bias ? (sets.pop() ?? []) : [];
+  const streetAnchorFeatures =
+    streetAnchorIdx >= 0 && settled[streetAnchorIdx]?.status === "fulfilled"
+      ? (settled[streetAnchorIdx] as PromiseFulfilledResult<PeliasFeature[]>).value
+      : [];
+  const national =
+    nationalIdx >= 0 && settled[nationalIdx]?.status === "fulfilled"
+      ? (settled[nationalIdx] as PromiseFulfilledResult<PeliasFeature[]>).value
+      : [];
+
+  const sets = settled.map((s, i) => {
+    if (i === nationalIdx || i === streetAnchorIdx) return [] as PeliasFeature[];
+    return s.status === "fulfilled" ? s.value : [];
+  });
 
   // Variant order encodes interpretation precision (verbatim → hẻm/ngõ →
   // alley mouth → street). Sets that are pure `match_type: "fallback"`
@@ -400,7 +547,13 @@ export async function searchAddress(
     let kept = features;
     if (variant?.alleySnap) {
       const snapped = snapToAlleyNeighbour(features, variant.alleySnap);
-      if (snapped) exactSets.push([snapped]);
+      if (snapped) exactSets.push([snapped.feature]);
+      return;
+    }
+    if (variant?.streetSnap) {
+      const merged = mergePeliasFeatures(features, streetAnchorFeatures);
+      const snapped = snapToStreetHouse(merged, variant.streetSnap);
+      if (snapped) exactSets.push([snapped.feature as PeliasFeature]);
       return;
     }
     if (variant?.streetLayerOnly) {
@@ -446,12 +599,27 @@ export async function searchAddress(
     }
   }
 
-  // Address intent ("số nhà" queries): pin-level results only — street
-  // segments are noise when any real address or venue matched.
+  // Address intent ("số nhà" queries): prefer address pins over venue noise.
   let ranked = merged;
   if (/\d/.test(q)) {
-    const pins = merged.filter((r) => r.layer === "address" || r.layer === "venue");
-    if (pins.length > 0) ranked = pins;
+    const addresses = merged.filter((r) => r.layer === "address");
+    const venues = merged.filter((r) => r.layer === "venue");
+    if (addresses.length > 0) ranked = [...addresses, ...venues];
+    else if (venues.length > 0) ranked = venues;
+  }
+
+  const plainHouse = parsePlainHouseStreet((q.split(",")[0] ?? "").trim());
+  if (plainHouse) {
+    const token = `${plainHouse.house} `;
+    ranked = [...ranked].sort((a, b) => {
+      const tier = (r: GeocodeResult) =>
+        r.layer === "address" && r.displayName.startsWith(token)
+          ? 0
+          : r.displayName.includes(plainHouse.house)
+            ? 1
+            : 2;
+      return tier(a) - tier(b);
+    });
   }
 
   // Compound queries ("230/25 X"): the exact house (or its alley-snap

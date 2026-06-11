@@ -18,5 +18,10 @@ echo "Removing processed OSRM files (extract/partition/customize will run on nex
 rm -f "${DATA_DIR}"/vietnam-latest.osrm*
 touch "${DATA_DIR}/.osrm-rebuild"
 
+echo "Removing building index (rebuild after map update)..."
+rm -rf "${DATA_DIR}/buildings"
+
 echo "Done. Restart OSRM to rebuild graph:"
 echo "  bun run osrm:rebuild"
+echo "Then rebuild building footprints:"
+echo "  bun run buildings:extract"

@@ -1,0 +1,15 @@
+diff --git a/leaflet-maplibre-gl.js b/leaflet-maplibre-gl.js
+index b1bead05c04ad41a9c9255a3b59358fc3fc64dea..4d11f6c7c33f1175ce698b747c93daa6d53ec910 100644
+--- a/leaflet-maplibre-gl.js
++++ b/leaflet-maplibre-gl.js
+@@ -311,6 +311,10 @@
+ 
+         _transitionEnd: function (e) {
+             L.Util.requestAnimFrame(function () {
++                // guard against the layer being removed between the
++                // resize/zoom event and this animation frame (mirrors _update)
++                if (!this._map || !this._glMap) { return; }
++
+                 var zoom = this._map.getZoom();
+                 var center = this._map.getCenter();
+                 var offset = this._map.latLngToContainerPoint(

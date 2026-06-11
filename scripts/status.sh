@@ -63,7 +63,18 @@ print_once() {
   curl -sf http://127.0.0.1:8080/health 2>/dev/null | head -c 120 && echo "" || echo "  health: no response"
 
   echo ""
+  echo "▶ Buildings (local index)"
+  MANIFEST="${ROOT:-.}/data/buildings/manifest.json"
+  if [ -f "$MANIFEST" ]; then
+    echo "  index: READY ($(du -sh "${ROOT:-.}/data/buildings" 2>/dev/null | cut -f1))"
+    grep -E '"featureCount"|"tileCount"' "$MANIFEST" 2>/dev/null | sed 's/^/  /'
+  else
+    echo "  index: missing — run: bun run buildings:extract"
+  fi
+
+  echo ""
   echo "Tips:"
+  echo "   • Building index: bun run buildings:extract"
   echo "   • Import Pelias:  bun run pelias:import"
   echo "   • Start Pelias:   bun run pelias:up"
   echo "   • OSRM logs:      bun run osrm:logs"

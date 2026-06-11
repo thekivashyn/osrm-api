@@ -866,6 +866,50 @@ export function renderPlaygroundHtml(): string {
       maxZoom: 20
     }).addTo(map);
 
+    const buildingLayer = L.layerGroup().addTo(map);
+    const MIN_BUILDING_ZOOM = 15;
+    let buildingTimer = null;
+    let buildingReq = 0;
+
+    async function refreshBuildingFootprints() {
+      if (map.getZoom() < MIN_BUILDING_ZOOM) {
+        buildingLayer.clearLayers();
+        return;
+      }
+      const b = map.getBounds();
+      const id = ++buildingReq;
+      try {
+        const params = new URLSearchParams({
+          south: String(b.getSouth()),
+          west: String(b.getWest()),
+          north: String(b.getNorth()),
+          east: String(b.getEast()),
+        });
+        const res = await fetch("/api/map/buildings?" + params);
+        const json = await res.json();
+        if (id !== buildingReq || !json.success) return;
+        buildingLayer.clearLayers();
+        if (!json.data?.features?.length) return;
+        L.geoJSON(json.data, {
+          interactive: false,
+          style: {
+            color: "#e2e8f0",
+            weight: 1.5,
+            opacity: 0.85,
+            fillColor: "#94a3b8",
+            fillOpacity: 0.35,
+          },
+        }).addTo(buildingLayer);
+      } catch (_) { /* ignore */ }
+    }
+
+    function scheduleBuildingRefresh() {
+      clearTimeout(buildingTimer);
+      buildingTimer = setTimeout(refreshBuildingFootprints, 350);
+    }
+    map.on("moveend", scheduleBuildingRefresh);
+    map.on("zoomend", scheduleBuildingRefresh);
+
     const routeLayer = L.layerGroup().addTo(map);
     const markerLayer = L.layerGroup().addTo(map);
     const userLayer = L.layerGroup().addTo(map);
@@ -1585,10 +1629,15 @@ export function renderPlaygroundHtml(): string {
       });
     }
 
+    function flyToAddress(r) {
+      map.setView([r.lat, r.lng], Math.max(map.getZoom(), 18), { animate: true });
+    }
+
     function applyFromResult(r) {
       fromPoint = { lat: r.lat, lng: r.lng, name: r.displayName };
       fromInput.value = r.displayName;
       renderPointCards();
+      flyToAddress(r);
       invalidatePrefetch();
       prefetchRoute();
     }
@@ -1598,6 +1647,7 @@ export function renderPlaygroundHtml(): string {
       toInput.value = r.displayName;
       renderPointCards();
       pushRecentSearch(r.displayName);
+      flyToAddress(r);
       invalidatePrefetch();
       prefetchRoute();
     }

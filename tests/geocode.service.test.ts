@@ -303,22 +303,19 @@ describe("searchAddress — Pelias", () => {
           ? [
               {
                 type: "Feature",
-                geometry: { type: "Point", coordinates: [106.6421, 10.7615] },
+                geometry: { type: "Point", coordinates: [106.642594, 10.762539] },
                 properties: {
-                  name: "230/18 Hẻm 230 Lạc Long Quân",
-                  housenumber: "230/18",
-                  street: "Hẻm 230 Lạc Long Quân",
-                  layer: "address",
-                  source: "overture",
+                  name: "Hẻm 230 Lạc Long Quân",
+                  layer: "street",
                   region: "Thành phố Hồ Chí Minh",
                 },
               },
               {
                 type: "Feature",
-                geometry: { type: "Point", coordinates: [106.6429, 10.7611] },
+                geometry: { type: "Point", coordinates: [106.642548, 10.762495] },
                 properties: {
-                  name: "230/80 Hẻm 230 Lạc Long Quân",
-                  housenumber: "230/80",
+                  name: "230/18 Hẻm 230 Lạc Long Quân",
+                  housenumber: "230/18",
                   street: "Hẻm 230 Lạc Long Quân",
                   layer: "address",
                   region: "Thành phố Hồ Chí Minh",
@@ -334,13 +331,70 @@ describe("searchAddress — Pelias", () => {
       lng: 106.64,
     });
 
-    // 25 is closer to 18 than to 80 → snap to 230/18's pin, marked estimate.
+    // Mouth at LLQ + anchor 18 → depth estimate ~125 m into alley for house 25.
     expect(results[0]?.displayName).toContain("230/25 Lạc Long Quân");
-    expect(results[0]?.displayName).not.toContain("ước lượng");
-    expect(results[0]?.lat).toBeCloseTo(10.7615);
+    expect(results[0]?.lat).toBeLessThan(10.762);
+    expect(results[0]?.lat).toBeGreaterThan(10.761);
     expect(results[0]?.layer).toBe("address");
+    expect(results[0]?.alleyMouth?.lat).toBeCloseTo(10.762539, 4);
+    expect(results[0]?.alleyMouth?.lng).toBeCloseTo(106.642594, 4);
     // Street-layer noise is dropped for house-number queries.
     expect(results.every((r) => r.layer !== "street")).toBe(true);
+  });
+
+  test("street-snaps plain house numbers from venue anchors", async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const text = url.searchParams.get("text") ?? "";
+      const isStreetGather = text === "Nguyễn Xiển" && url.pathname.includes("autocomplete");
+      const isHouseQuery = text === "865 Nguyễn Xiển";
+      return Response.json({
+        type: "FeatureCollection",
+        features:
+          isStreetGather || isHouseQuery
+            ? [
+                {
+                  type: "Feature",
+                  geometry: { type: "Point", coordinates: [106.832, 10.818] },
+                  properties: {
+                    layer: "venue",
+                    name: "800 Nguyễn Xiển",
+                    region: "Thành phố Hồ Chí Minh",
+                  },
+                },
+                {
+                  type: "Feature",
+                  geometry: { type: "Point", coordinates: [106.835, 10.852] },
+                  properties: {
+                    layer: "venue",
+                    name: "1290 Nguyễn Xiển",
+                    region: "Thành phố Hồ Chí Minh",
+                  },
+                },
+                {
+                  type: "Feature",
+                  geometry: { type: "Point", coordinates: [106.833, 10.82] },
+                  properties: {
+                    layer: "street",
+                    name: "Nguyễn Xiển",
+                    street: "Nguyễn Xiển",
+                    match_type: "fallback",
+                    region: "Thành phố Hồ Chí Minh",
+                  },
+                  bbox: [106.83, 10.815, 106.84, 10.825],
+                },
+              ]
+            : [],
+      });
+    }) as typeof fetch;
+
+    const results = await searchAddress("865 Nguyễn Xiển", 5, { lat: 10.815, lng: 106.834 });
+
+    expect(results[0]?.layer).toBe("address");
+    expect(results[0]?.displayName).toContain("865");
+    expect(results[0]?.estimated).toBe(true);
+    expect(results[0]?.lat).toBeGreaterThan(10.818);
+    expect(results[0]?.lat).toBeLessThan(10.852);
   });
 
   test("returns empty array when no features", async () => {

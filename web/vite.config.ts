@@ -26,6 +26,15 @@ function forwardClientIp() {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), forwardClientIp()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          maplibre: ["maplibre-gl", "@maplibre/maplibre-gl-leaflet"],
+        },
+      },
+    },
+  },
   server: {
     port: 80,
     strictPort: false,

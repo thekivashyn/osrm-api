@@ -143,3 +143,207 @@ body.playground-active {
 .gate-enter {
   animation: gate-fade-in 0.45s ease-out both;
 }
+
+.search-hint-pin {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.85);
+  color: #f1f5f9;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.center-crosshair,
+.center-crosshair-ring,
+.center-crosshair-dot,
+.center-crosshair-stem,
+.crosshair-from,
+.crosshair-to {
+  display: none;
+}
+
+.map-pick-crosshair {
+  cursor: crosshair !important;
+}
+
+.placed-pin {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2.5px solid #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  animation: placed-pin-pop 0.35s ease-out both;
+}
+
+.placed-pin-from {
+  background: #10b981;
+}
+
+.placed-pin-to {
+  background: #f43f5e;
+}
+
+.labeled-pin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+}
+
+.labeled-pin-label {
+  margin-bottom: 5px;
+  max-width: 200px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5);
+}
+
+.labeled-pin-from .labeled-pin-label {
+  background: rgba(16, 185, 129, 0.95);
+  color: #fff;
+}
+
+.labeled-pin-to .labeled-pin-label {
+  background: rgba(244, 63, 94, 0.95);
+  color: #fff;
+}
+
+@keyframes placed-pin-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes guide-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes guide-pan {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(3px, -3px);
+  }
+  50% {
+    transform: translate(-3px, 3px);
+  }
+  75% {
+    transform: translate(3px, 3px);
+  }
+}
+
+@keyframes guide-click-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.7;
+  }
+}
+
+@keyframes guide-ring-pulse {
+  0%,
+  100% {
+    r: 6;
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.pick-guide-step {
+  animation: guide-step-in 0.4s ease-out both;
+}
+
+.pick-guide-done {
+  animation: guide-step-in 0.35s ease-out both;
+}
+
+.guide-icon-pan {
+  animation: guide-pan 2.4s ease-in-out infinite;
+}
+
+.guide-icon-click {
+  animation: guide-click-pulse 1.6s ease-in-out infinite;
+}
+
+.guide-click-ring {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+.guide-target-ring {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.candidate-pin {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: rgba(56, 189, 248, 0.35);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  animation: pulse-dot 1.4s infinite;
+}
+
+.alley-mouth-pin {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.92);
+  color: #1c1917;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.confidence-halo {
+  animation: pulse-dot 2.2s infinite;
+}
+
+.street-pulse-line {
+  animation: pulse-dot 1.8s infinite;
+}
+
+.ghost-route-line {
+  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.45));
+}
+
+.pick-mode-banner {
+  animation: gate-fade-in 0.35s ease-out both;
+}

@@ -25,6 +25,12 @@ export const config = {
     return process.env.PELIAS_URL ?? "http://127.0.0.1:4000";
   },
   geocodeUserAgent: process.env.GEOCODE_USER_AGENT ?? "routing-api-internal/1.0 (dev playground)",
+  get buildingsDataDir() {
+    return process.env.BUILDINGS_DATA_DIR ?? "data/buildings";
+  },
+  get buildingsSourcePbf() {
+    return process.env.BUILDINGS_SOURCE_PBF ?? "data/vietnam-latest.osm.pbf";
+  },
   get carDurationFactor() {
     const raw = Number(
       process.env.ROUTING_DURATION_FACTOR_CAR ?? process.env.ROUTING_DURATION_FACTOR ?? 1.25,

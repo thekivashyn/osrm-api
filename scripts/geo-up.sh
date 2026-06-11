@@ -17,6 +17,11 @@ if [ ! -f "$PBF" ]; then
   exit 1
 fi
 
+if [ ! -f "$ROOT/data/buildings/manifest.json" ]; then
+  echo "Building index not built yet. After OSRM is up, run:"
+  echo "  bun run buildings:extract   # one-time from vietnam-latest.osm.pbf"
+fi
+
 echo "Starting OSRM (:5050/:5051) + Pelias (:4000)..."
 echo "  OSRM PBF:   ./data/vietnam-latest.osm.pbf"
 echo "  Pelias:     pelias/vietnam (first import: bun run pelias:import)"

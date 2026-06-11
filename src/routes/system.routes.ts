@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { config } from "../config/env";
 import { checkPeliasStatus } from "../services/geocode.service";
+import { getBuildingManifest, isLocalBuildingIndexReady } from "../services/building-local.store";
 import {
   getRequestLogById,
   queryRequestLogs,
@@ -131,11 +132,13 @@ export const systemRoutes = new Elysia()
   });
 
 async function probeSystemStatus() {
-  const [osrmCar, osrmMotor, pelias] = await Promise.all([
+  const [osrmCar, osrmMotor, pelias, buildingManifest] = await Promise.all([
     probeOsrm(config.osrmUrl),
     probeOsrm(config.osrmMotorUrl),
     checkPeliasStatus(),
+    getBuildingManifest(),
   ]);
+  const buildingsReady = isLocalBuildingIndexReady();
   return {
     success: true,
     data: {
@@ -150,6 +153,13 @@ async function probeSystemStatus() {
         status: pelias.ok ? ("ok" as const) : ("down" as const),
         service: "pelias",
         message: sanitizeProbeMessage(pelias.message),
+      },
+      buildings: {
+        status: buildingsReady ? ("ok" as const) : ("missing" as const),
+        service: "buildings-local",
+        message: buildingsReady
+          ? `${buildingManifest?.featureCount?.toLocaleString() ?? "?"} footprints (${buildingManifest?.tileCount?.toLocaleString() ?? "?"} tiles)`
+          : "Run: bun run buildings:extract",
       },
       checkedAt: new Date().toISOString(),
     },

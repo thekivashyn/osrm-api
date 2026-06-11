@@ -11,6 +11,19 @@ export interface GeocodeResult {
   lat: number;
   lng: number;
   distanceKm?: number | null;
+  layer?: string;
+  /** Coordinates estimated from neighbours — not an indexed pin. */
+  estimated?: boolean;
+  /** Alley entrance on the main street — set when house number is estimated inside an alley. */
+  alleyMouth?: { lat: number; lng: number };
+}
+
+export interface NearestData {
+  waypoint: {
+    distance: number;
+    name: string;
+    location: [number, number];
+  };
 }
 
 export interface GeoJsonLineString {

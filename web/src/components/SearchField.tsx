@@ -16,17 +16,28 @@ type ListPos = {
 
 function pickResult(
   r: GeocodeResult,
-  onPick: (r: GeocodeResult) => void,
+  onPick: (r: GeocodeResult, meta: { query: string; results: GeocodeResult[] }) => void,
   onChange: (v: string) => void,
   close: () => void,
   input: HTMLInputElement | null,
   skipSearch: { current: boolean },
+  query: string,
+  results: GeocodeResult[],
 ) {
   skipSearch.current = true;
-  onPick(r);
   onChange(r.displayName);
+  onPick(r, { query, results });
   close();
   input?.blur();
+}
+
+function AdjustPinIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M12 21s7-4.5 7-11a7 7 0 1 0-14 0c0 6.5 7 11 7 11z" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="10" r="2.5" />
+    </svg>
+  );
 }
 
 export function SearchField({
@@ -34,15 +45,25 @@ export function SearchField({
   value,
   onChange,
   onPick,
+  onFocus: onFocusField,
+  onAdjustPosition,
+  isAdjusting = false,
+  canAdjust = false,
   bias,
   accentClass,
+  active = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
-  onPick: (r: GeocodeResult) => void;
+  onPick: (r: GeocodeResult, meta: { query: string; results: GeocodeResult[] }) => void;
+  onFocus?: () => void;
+  onAdjustPosition?: () => void;
+  isAdjusting?: boolean;
+  canAdjust?: boolean;
   bias: Point;
   accentClass: string;
+  active?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -167,7 +188,16 @@ export function SearchField({
                     className="w-full px-3 py-2 text-left hover:bg-white/[0.06] active:bg-white/[0.08]"
                     onPointerDown={(e) => {
                       e.preventDefault();
-                      pickResult(r, onPick, onChange, close, inputRef.current, skipSearchRef);
+                      pickResult(
+                        r,
+                        onPick,
+                        onChange,
+                        close,
+                        inputRef.current,
+                        skipSearchRef,
+                        value,
+                        results,
+                      );
                     }}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -177,6 +207,11 @@ export function SearchField({
                           Gần bạn
                         </span>
                       )}
+                      {r.estimated && (
+                        <span className="shrink-0 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
+                          ~ước lượng
+                        </span>
+                      )}
                     </div>
                     <span className="font-mono text-[10px] text-neutral-600">
                       {r.lat.toFixed(5)}, {r.lng.toFixed(5)}
@@ -184,11 +219,6 @@ export function SearchField({
                   </button>
                 </li>
               ))
-            )}
-            {results.length > 0 && /\d/.test(value) && (
-              <li className="border-t border-white/[0.06] px-3 py-2 text-[10px] leading-relaxed text-neutral-600">
-                OSM thường chỉ có tên đường — chọn đoạn gần nhất, hoặc click map để chỉnh điểm.
-              </li>
             )}
           </ul>,
           document.body,
@@ -212,6 +242,7 @@ export function SearchField({
             setError(null);
           }}
           onFocus={() => {
+            onFocusField?.();
             if (results.length || error) {
               updateListPos();
               setOpen(true);
@@ -220,11 +251,26 @@ export function SearchField({
           onKeyDown={(e) => {
             if (e.key === "Enter" && results[0]) {
               e.preventDefault();
-              pickResult(results[0], onPick, onChange, close, inputRef.current, skipSearchRef);
+              pickResult(
+                results[0],
+                onPick,
+                onChange,
+                close,
+                inputRef.current,
+                skipSearchRef,
+                value,
+                results,
+              );
             }
             if (e.key === "Escape") close();
           }}
-          className="w-full rounded-lg border border-white/[0.08] bg-black py-2.5 pl-8 pr-3 text-sm text-neutral-100 outline-none transition placeholder:text-neutral-600 focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
+          className={`w-full rounded-lg border bg-black py-2.5 pl-8 text-sm text-neutral-100 outline-none transition placeholder:text-neutral-600 focus:ring-1 ${
+            onAdjustPosition ? "pr-10" : "pr-3"
+          } ${
+            active || isAdjusting
+              ? "border-emerald-500/50 ring-emerald-500/25"
+              : "border-white/[0.08] focus:border-emerald-500/40 focus:ring-emerald-500/20"
+          }`}
           placeholder="Tìm địa chỉ…"
           autoComplete="off"
           role="combobox"
@@ -233,6 +279,24 @@ export function SearchField({
         />
         {loading && (
           <span className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin rounded-full border-2 border-neutral-700 border-t-white" />
+        )}
+        {!loading && onAdjustPosition && canAdjust && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              onAdjustPosition();
+              inputRef.current?.blur();
+            }}
+            title="Chỉnh vị trí trên bản đồ"
+            className={`absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md transition ${
+              isAdjusting
+                ? "bg-emerald-500/20 text-emerald-300"
+                : "text-neutral-500 hover:bg-white/[0.06] hover:text-white"
+            }`}
+          >
+            <AdjustPinIcon />
+          </button>
         )}
       </div>
       {error && !open && (

@@ -18,16 +18,7 @@ export const PROFILE_LABELS: Record<string, string> = {
   motorbike: "Xe máy",
 };
 
-export const DEFAULT_FROM = {
-  lat: 10.7635,
-  lng: 106.644,
-  name: "230/25 Lạc Long Quân, Bình Thới, HCM",
-};
-
-export const DEFAULT_TO = {
-  lat: 10.795112,
-  lng: 106.731227,
-  name: "Trần Não, An Khánh, HCM",
-};
+/** Map / search fallback center (HCM) — not pre-filled in inputs. */
+export const MAP_DEFAULT_CENTER = { lat: 10.779, lng: 106.688 };
 
 export const DURATION_DISCLAIMER = "Giả định không kẹt xe";

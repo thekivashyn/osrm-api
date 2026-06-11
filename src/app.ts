@@ -5,6 +5,7 @@ import { errorHandler } from "./middlewares/error-handler";
 import { logger } from "./middlewares/logger";
 import { routingRoutes } from "./routes/routing.routes";
 import { geocodeRoutes } from "./routes/geocode.routes";
+import { mapRoutes } from "./routes/map.routes";
 import { systemRoutes } from "./routes/system.routes";
 
 export function createApp() {
@@ -13,6 +14,7 @@ export function createApp() {
     .use(logger)
     .use(systemRoutes)
     .use(geocodeRoutes)
+    .use(mapRoutes)
     .get("/health", () => ({
       success: true,
       service: config.serviceName,

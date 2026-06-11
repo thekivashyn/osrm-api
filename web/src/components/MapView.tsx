@@ -1,22 +1,17 @@
-import { MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import type { MutableRefObject } from "react";
 import type { Point, RouteOption } from "../types";
+import { BasemapLayer } from "./BasemapLayer";
+import { BuildingFootprintLayer } from "./BuildingFootprintLayer";
+import { MapFocus } from "./MapFocus";
+import { MapPickLayers } from "./map-pick/MapPickLayers";
+import { MapCenterTracker, MapInstanceBridge } from "./map-pick/MapPickHelpers";
+import { UserLocationFlyTo, UserLocationLayer } from "./UserLocationLayer";
+import { labeledPinIcon } from "../lib/labeled-pin";
+import type { PickSession } from "../lib/pick-mode";
 import "leaflet/dist/leaflet.css";
-
-const iconFrom = L.divIcon({
-  className: "",
-  html: `<div style="width:14px;height:14px;border-radius:50%;background:#10b981;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4)"></div>`,
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
-});
-
-const iconTo = L.divIcon({
-  className: "",
-  html: `<div style="width:14px;height:14px;border-radius:50%;background:#f43f5e;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4)"></div>`,
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
-});
 
 function MapResizeFix() {
   const map = useMap();
@@ -35,7 +30,10 @@ function MapResizeFix() {
 
 function FitBounds({ routes, from, to }: { routes: RouteOption[]; from: Point; to: Point }) {
   const map = useMap();
+  const endpoints = useRef({ from, to });
+  endpoints.current = { from, to };
   useEffect(() => {
+    const { from, to } = endpoints.current;
     const coords: [number, number][] = [
       [from.lat, from.lng],
       [to.lat, to.lng],
@@ -46,7 +44,7 @@ function FitBounds({ routes, from, to }: { routes: RouteOption[]; from: Point; t
     if (coords.length >= 2) {
       map.fitBounds(L.latLngBounds(coords), { padding: [48, 48], maxZoom: 15 });
     }
-  }, [map, routes, from, to]);
+  }, [map, routes]);
   return null;
 }
 
@@ -55,22 +53,89 @@ export function MapView({
   to,
   routes,
   activeIndex,
+  focusPoint,
+  pickSession,
+  draftPoint,
+  pickLocked = false,
+  pickLabel,
+  ghostRoute,
+  onMapPick,
+  onBuildingPick,
+  onMapCenterChange,
+  mapCenterRef,
+  leafletMapRef,
+  userLocation,
+  flyToUserOnLoad = false,
 }: {
-  from: Point;
-  to: Point;
+  from: Point | null;
+  to: Point | null;
   routes: RouteOption[];
   activeIndex: number;
+  focusPoint?: Point | null;
+  pickSession?: PickSession | null;
+  draftPoint?: Point | null;
+  pickLocked?: boolean;
+  pickLabel?: string | null;
+  ghostRoute?: RouteOption | null;
+  onMapPick?: (lat: number, lng: number) => void;
+  onBuildingPick?: (lat: number, lng: number) => void;
+  onMapCenterChange?: (lat: number, lng: number) => void;
+  mapCenterRef?: MutableRefObject<{ lat: number; lng: number } | null>;
+  leafletMapRef?: MutableRefObject<L.Map | null>;
+  userLocation?: Point | null;
+  flyToUserOnLoad?: boolean;
 }) {
+  const picking = Boolean(pickSession);
+  const pickDraft = draftPoint ?? pickSession?.anchor ?? null;
+  const buildingAssist = Boolean(pickSession);
+
   return (
-    <MapContainer center={[10.779, 106.688]} zoom={12} className="h-full w-full" zoomControl={false}>
+    <MapContainer
+      center={[10.779, 106.688]}
+      zoom={12}
+      minZoom={2}
+      maxZoom={20}
+      className="h-full w-full"
+      zoomControl={false}
+    >
       <MapResizeFix />
-      <TileLayer
-        attribution="&copy; OSM &copy; CARTO"
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        maxZoom={20}
-      />
-      <Marker position={[from.lat, from.lng]} icon={iconFrom} />
-      <Marker position={[to.lat, to.lng]} icon={iconTo} />
+      <BasemapLayer />
+      <UserLocationLayer position={userLocation ?? null} />
+      {flyToUserOnLoad && userLocation && <UserLocationFlyTo position={userLocation} enabled />}
+      {leafletMapRef && <MapInstanceBridge mapRef={leafletMapRef} />}
+      {onMapCenterChange && (
+        <MapCenterTracker onCenter={onMapCenterChange} centerRef={mapCenterRef} />
+      )}
+      <BuildingFootprintLayer pickMode={buildingAssist} onBuildingPick={onBuildingPick} />
+      {!picking && focusPoint && <MapFocus point={focusPoint} />}
+      {!pickSession && from && (
+        <Marker position={[from.lat, from.lng]} icon={labeledPinIcon("from", from.name)} />
+      )}
+      {!pickSession && to && (
+        <Marker position={[to.lat, to.lng]} icon={labeledPinIcon("to", to.name)} />
+      )}
+      {picking && pickSession && pickDraft && onMapPick && (
+        <MapPickLayers
+          session={pickSession}
+          draftPoint={pickDraft}
+          pickLocked={pickLocked}
+          pickLabel={pickLabel}
+          onMapClick={onMapPick}
+        />
+      )}
+      {ghostRoute?.geometry?.coordinates.length ? (
+        <Polyline
+          positions={ghostRoute.geometry.coordinates.map(([lng, lat]) => [lat, lng] as [number, number])}
+          pathOptions={{
+            color: "#a78bfa",
+            weight: 4,
+            opacity: 0.65,
+            dashArray: "10 14",
+            lineCap: "round",
+            className: "ghost-route-line",
+          }}
+        />
+      ) : null}
       {routes.map((r, i) => {
         if (!r.geometry?.coordinates.length) return null;
         const latlngs = r.geometry.coordinates.map(([lng, lat]) => [lat, lng] as [number, number]);
@@ -90,7 +155,9 @@ export function MapView({
           />
         );
       })}
-      {routes.length > 0 && <FitBounds routes={routes} from={from} to={to} />}
+      {routes.length > 0 && !pickSession && from && to && (
+        <FitBounds routes={routes} from={from} to={to} />
+      )}
     </MapContainer>
   );
 }

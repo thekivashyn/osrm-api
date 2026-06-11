@@ -48,7 +48,7 @@ bun run pelias:up
 bun run pelias:logs
 ```
 
-Config: `pelias/vietnam/`. Custom CSV: `data/custom-addresses/`.
+Config: `pelias/vietnam/`. Custom CSV: `data/custom-addresses/` (OSM: `bun run addresses:extract`, Overture POI: `bun run pelias:overture` on server).
 
 `.env` on server:
 

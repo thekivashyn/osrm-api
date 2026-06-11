@@ -4,6 +4,7 @@ import type {
   GeocodeResult,
   HealthResponse,
   InfoResponse,
+  NearestData,
   Point,
   RequestLogEntry,
   RequestLogsPage,
@@ -12,7 +13,7 @@ import type {
   RoutingProfile,
   StatusResponse,
   SystemStatusData,
-} from "./types";
+} from "../types";
 
 async function parseJson<T>(res: Response): Promise<ApiResponse<T>> {
   return res.json() as Promise<ApiResponse<T>>;
@@ -36,6 +37,26 @@ export async function fetchGeocode(
   }
   if (!data.success) throw new Error(data.message);
   return data.data.results;
+}
+
+export async function fetchReverseGeocode(lat: number, lng: number): Promise<GeocodeResult> {
+  const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
+  const res = await fetch(`/api/reverse-geocode?${params}`);
+  const data = await parseJson<GeocodeResult>(res);
+  if (!data.success) throw new Error(data.message);
+  return data.data;
+}
+
+export async function fetchNearest(lat: number, lng: number): Promise<Point> {
+  const res = await fetch("/api/nearest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lat, lng }),
+  });
+  const data = await parseJson<NearestData>(res);
+  if (!data.success) throw new Error(data.message);
+  const [lngSnapped, latSnapped] = data.data.waypoint.location;
+  return { lat: latSnapped, lng: lngSnapped, name: data.data.waypoint.name };
 }
 
 export async function fetchRoute(
