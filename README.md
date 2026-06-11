@@ -43,7 +43,7 @@ bun run dev:remote:tunnel   # SSH tunnel :4000/:5050/:5051
 Chạy trên server (`/opt/routing-api`), không trên Mac dev:
 
 ```bash
-bun run pelias:import   # one-time: 1–3+ hours, ~12GB RAM
+bun run pelias:import   # one-time: ~15 phút (VN extract), ES heap 4GB
 bun run pelias:up
 bun run pelias:logs
 ```

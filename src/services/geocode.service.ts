@@ -136,9 +136,8 @@ export async function checkPeliasStatus(): Promise<{
 
   try {
     const probe = buildPeliasUrl("/v1/autocomplete", {
-      text: "Ho Chi Minh",
+      text: "Bitexco",
       size: "1",
-      "boundary.country": "VNM",
     });
     const res = await fetch(probe, {
       headers: { "User-Agent": config.geocodeUserAgent },
@@ -163,9 +162,6 @@ export async function checkPeliasStatus(): Promise<{
   }
 }
 
-/** @deprecated use checkPeliasStatus */
-export const checkNominatimStatus = checkPeliasStatus;
-
 export async function searchAddress(
   query: string,
   limit = 5,
@@ -187,8 +183,8 @@ export async function searchAddress(
   const params: Record<string, string> = {
     text: q,
     size: String(cappedLimit),
-    "boundary.country": "VNM",
     lang: "vi",
+    "boundary.country": "VNM",
   };
 
   if (bias) {

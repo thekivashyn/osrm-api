@@ -15,7 +15,11 @@ if [ "$(id -u)" = "0" ] && [ -z "${PELIAS_AS_USER:-}" ]; then
     useradd -m -s /bin/bash pelias
   fi
   usermod -aG docker pelias 2>/dev/null || true
-  chown -R pelias:pelias "$ROOT/pelias" "$ROOT/.pelias-docker" 2>/dev/null || true
+  chown -R pelias:pelias "$ROOT/.pelias-docker" 2>/dev/null || true
+  find "$ROOT/pelias" -path '*/data/elasticsearch' -prune -o -exec chown pelias:pelias {} + 2>/dev/null || true
+  if [ -d "$ROOT/pelias/vietnam/data/elasticsearch" ]; then
+    chown -R 1000:1000 "$ROOT/pelias/vietnam/data/elasticsearch"
+  fi
   exec su - pelias -c "cd '$ROOT' && PELIAS_AS_USER=1 sh '$SCRIPT'"
 fi
 

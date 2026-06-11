@@ -20,7 +20,6 @@
     "services": {
       "placeholder": { "url": "http://placeholder:4100" },
       "pip": { "url": "http://pip:4200" },
-      "interpolation": { "url": "http://interpolation:4300" },
       "libpostal": { "url": "http://libpostal:4400" }
     }
   },
@@ -28,24 +27,19 @@
     "adminLookup": {
       "enabled": true
     },
-    "geonames": {
-      "datapath": "/data/geonames",
-      "countryCode": "VN"
-    },
     "openstreetmap": {
       "leveldbpath": "/tmp",
       "datapath": "/data/openstreetmap",
       "import": [{ "filename": "vietnam-latest.osm.pbf" }]
     },
-    "openaddresses": {
-      "datapath": "/data/openaddresses",
-      "files": []
+    "csv": {
+      "datapath": "/data/custom-addresses"
     },
     "whosonfirst": {
       "datapath": "/data/whosonfirst",
+      "sqlite": true,
       "importPostalcodes": true,
-      "countryCode": "VN",
-      "importPlace": ["85632429"]
+      "countryCode": "VN"
     }
   }
 }

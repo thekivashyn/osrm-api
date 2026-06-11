@@ -40,9 +40,11 @@ print_once() {
     echo "  elasticsearch: $(docker ps --filter name=pelias_elasticsearch --format '{{.Status}}')"
   fi
 
-  PELIAS_STATUS=$(curl -s "http://127.0.0.1:4000/v1/autocomplete?text=Ho%20Chi%20Minh&size=1&boundary.country=VNM" 2>/dev/null || echo "")
-  if [ -n "$PELIAS_STATUS" ] && echo "$PELIAS_STATUS" | grep -q FeatureCollection; then
+  PELIAS_STATUS=$(curl -s "http://127.0.0.1:4000/v1/autocomplete?text=Bitexco&size=1" 2>/dev/null || echo "")
+  if [ -n "$PELIAS_STATUS" ] && echo "$PELIAS_STATUS" | grep -q '"label"'; then
     echo "  geocode (:4000): READY"
+    DOC_COUNT=$(curl -s "http://127.0.0.1:9200/pelias/_count" 2>/dev/null | grep -o '"count":[0-9]*' | cut -d: -f2)
+    [ -n "$DOC_COUNT" ] && echo "  index docs: $DOC_COUNT"
   else
     echo "  geocode (:4000): down or importing…"
   fi

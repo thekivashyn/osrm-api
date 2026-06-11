@@ -25,8 +25,9 @@ Repo: https://github.com/thekivashyn/osrm-api
 | Service | URL | Public? |
 |---------|-----|---------|
 | API | `127.0.0.1:8080` | Không |
-| OSRM car / motor | `127.0.0.1:5050` / `5051` | Không |
-| Nominatim | `127.0.0.1:9091` | Không |
+| OSRM car / motor | `127.0.0.1:5050` / `5051` | Không (dev IP qua `allow-dev-ip.sh`) |
+| Pelias geocoder | `127.0.0.1:4000` | Không (dev IP qua `allow-dev-ip.sh`) |
+| Elasticsearch | `127.0.0.1:9200` | Không |
 | Nginx | `:80` → API | Chỉ IP được phép |
 
 ---
@@ -83,7 +84,7 @@ Vultr → Server → **Firewall** → rule **Inbound**:
 | TCP | 80 | IP server/app được phép (hoặc dải VPC) |
 | TCP | 443 | (nếu bật HTTPS) cùng source |
 
-**Không** mở 5050, 5051, 9091, 8080.
+**Không** mở 5050, 5051, 4000, 9200, 8080.
 
 ### 2) Nginx `allow` (application)
 
@@ -149,14 +150,11 @@ Trong app backend: set `ROUTING_API_URL=http://routing.yourdomain.com` (hoặc I
 ## Trạng thái setup
 
 - [x] Docker, Bun, Nginx, UFW, API systemd
-- [x] OSRM + Nominatim Docker (build/import — theo dõi log)
+- [x] OSRM car/motor Docker — graphs ready
+- [x] Pelias (ES + WOF + OSM import) — `bun run pelias:import`
 - [x] Nginx `osrm-routing.vuatho.com` + rate limit + keepalive
-- [x] sysctl + systemd tuning
-- [ ] DNS A `osrm-routing` → `149.28.134.50` (NXDOMAIN hiện tại)
+- [x] sysctl + systemd tuning (`vm.max_map_count` cho ES)
 - [ ] HTTPS (`./scripts/enable-https.sh`)
-- [ ] Docker localhost ports (`./scripts/secure-docker-ports.sh` sau OSRM ready)
-- [ ] OSRM graphs ready
-- [ ] Nominatim import OK
 
 ---
 
@@ -167,9 +165,10 @@ ssh root@149.28.134.50
 systemctl status routing-api
 journalctl -u routing-api -f
 docker logs -f osrm
-docker logs -f nominatim
+docker logs -f pelias_api
+sh /opt/routing-api/scripts/status.sh
 curl http://127.0.0.1:8080/health
-curl http://127.0.0.1:9091/status
+curl 'http://127.0.0.1:4000/v1/autocomplete?text=Bitexco&size=1'
 ```
 
 ---

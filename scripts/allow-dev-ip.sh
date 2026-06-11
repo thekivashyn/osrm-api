@@ -31,12 +31,11 @@ if [ -f pelias/vietnam/docker-compose.yml ]; then
 fi
 
 echo "==> Docker recreate (0.0.0.0 bind, UFW restricts to $DEV_IP)"
-if curl -sf "http://127.0.0.1:4000/v1/autocomplete?text=test&size=1&boundary.country=VNM" 2>/dev/null | grep -q FeatureCollection; then
-  docker compose up -d --force-recreate
+docker compose up -d --force-recreate osrm || docker compose up -d osrm
+if curl -sf "http://127.0.0.1:4000/v1/autocomplete?text=Bitexco&size=1" 2>/dev/null | grep -q FeatureCollection; then
+  (cd pelias/vietnam && docker compose up -d --force-recreate api)
 else
-  echo "Pelias still importing — recreating osrm only"
-  docker compose up -d --force-recreate osrm || docker compose up -d osrm
-  echo "When GEO ready, re-run: $0 $DEV_IP"
+  echo "Pelias not ready — when imported, re-run: $0 $DEV_IP"
 fi
 
 echo ""

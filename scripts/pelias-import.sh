@@ -18,8 +18,10 @@ if [ "$(id -u)" = "0" ] && [ -z "${PELIAS_AS_USER:-}" ]; then
     useradd -m -s /bin/bash pelias
   fi
   usermod -aG docker pelias 2>/dev/null || true
-  mkdir -p "$ROOT/pelias" "$ROOT/.pelias-docker"
-  chown -R pelias:pelias "$ROOT/pelias" "$ROOT/.pelias-docker" 2>/dev/null || true
+  mkdir -p "$ROOT/pelias" "$ROOT/.pelias-docker" "$ROOT/pelias/vietnam/data/elasticsearch"
+  chown -R pelias:pelias "$ROOT/.pelias-docker" 2>/dev/null || true
+  find "$ROOT/pelias" -path '*/data/elasticsearch' -prune -o -exec chown pelias:pelias {} + 2>/dev/null || true
+  chown -R 1000:1000 "$ROOT/pelias/vietnam/data/elasticsearch"
   exec su - pelias -c "cd '$ROOT' && PELIAS_AS_USER=1 sh '$SCRIPT'"
 fi
 
@@ -44,7 +46,13 @@ if [ ! -f .env ]; then
 fi
 
 mkdir -p data/openstreetmap data/custom-addresses
-ln -sf "$PBF" data/openstreetmap/vietnam-latest.osm.pbf
+# PBF is bind-mounted via OSM_PBF in docker-compose (see pelias/vietnam/.env).
+# Elasticsearch data dir must be uid 1000 (container user); root block above handles it.
+if [ "$(stat -c '%u' data/elasticsearch 2>/dev/null || echo 0)" != "1000" ]; then
+  echo "Elasticsearch data dir must be owned by uid 1000."
+  echo "  sudo chown -R 1000:1000 $PROJECT/data/elasticsearch"
+  exit 1
+fi
 
 PELIAS="$PELIAS_DOCKER/pelias"
 chmod +x "$PELIAS" 2>/dev/null || true
@@ -58,17 +66,18 @@ echo "==> Pull images"
 echo "==> Elasticsearch"
 "$PELIAS" elastic start
 "$PELIAS" elastic wait
-"$PELIAS" elastic create
+"$PELIAS" elastic create || true
 
-echo "==> Download WOF + Geonames (OSM PBF symlinked from ./data)"
+echo "==> Download WOF admin data (OSM PBF bind-mounted from ./data)"
 "$PELIAS" download wof
-"$PELIAS" download geonames 2>/dev/null || true
 
-echo "==> Prepare placeholder"
+echo "==> Import WOF admin layers"
+"$PELIAS" import wof
+
+echo "==> Prepare placeholder (builds from WOF sqlite)"
 "$PELIAS" prepare placeholder
 
-echo "==> Import WOF + OSM"
-"$PELIAS" import wof
+echo "==> Import OSM (admin lookup attaches city/district to every record)"
 "$PELIAS" import osm
 
 if [ -n "$(find data/custom-addresses -name '*.csv' 2>/dev/null | head -1)" ]; then
@@ -76,9 +85,15 @@ if [ -n "$(find data/custom-addresses -name '*.csv' 2>/dev/null | head -1)" ]; t
   "$PELIAS" import csv
 fi
 
+echo "==> Optimize index (refresh + force merge)"
+curl -s -XPOST "http://127.0.0.1:9200/pelias/_refresh" >/dev/null || true
+curl -m 900 -s -XPOST "http://127.0.0.1:9200/pelias/_forcemerge?max_num_segments=1" >/dev/null || true
+
 echo "==> Start Pelias API stack"
 "$PELIAS" compose up
+# placeholder/api cache sqlite + config at startup — bounce if they were already running.
+docker restart pelias_placeholder pelias_api >/dev/null 2>&1 || true
 
 echo ""
 echo "Pelias ready at http://127.0.0.1:4000"
-echo "Test: curl 'http://127.0.0.1:4000/v1/autocomplete?text=Bitexco&boundary.country=VNM&size=3'"
+echo "Test: curl 'http://127.0.0.1:4000/v1/autocomplete?text=Bitexco&size=3'"

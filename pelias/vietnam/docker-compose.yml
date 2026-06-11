@@ -54,6 +54,7 @@ services:
     volumes:
       - "./pelias.json:/code/pelias.json"
       - "${DATA_DIR}:/data"
+      - "${OSM_PBF:-../../data/vietnam-latest.osm.pbf}:/data/openstreetmap/vietnam-latest.osm.pbf:ro"
 
   csv-importer:
     image: pelias/csv-importer:master
@@ -63,16 +64,6 @@ services:
       - "./pelias.json:/code/pelias.json"
       - "${DATA_DIR}:/data"
       - "../../data/custom-addresses:/data/custom-addresses:ro"
-
-  interpolation:
-    image: pelias/interpolation:master
-    container_name: pelias_interpolation
-    restart: always
-    environment: ["PORT=4300"]
-    ports: ["127.0.0.1:4300:4300"]
-    volumes:
-      - "./pelias.json:/code/pelias.json"
-      - "${DATA_DIR}:/data"
 
   pip:
     image: pelias/pip-service:master
@@ -100,4 +91,4 @@ services:
         hard: 65536
     cap_add: ["IPC_LOCK"]
     environment:
-      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - "ES_JAVA_OPTS=-Xms4g -Xmx4g"

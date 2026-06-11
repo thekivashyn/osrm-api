@@ -36,5 +36,6 @@ export const logger = new Elysia({ name: "logger" })
     writeLog(request, set, requestStart, requestId);
   })
   .onError({ as: "global" }, ({ request, set, requestStart, requestId }) => {
-    writeLog(request, set, requestStart, requestId);
+    // onError can fire before derive — guard missing context.
+    writeLog(request, set, requestStart ?? performance.now(), requestId ?? crypto.randomUUID());
   });

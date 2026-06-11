@@ -19,8 +19,6 @@
     "osrm:up": "docker compose up osrm -d",
     "osrm:down": "docker compose down",
     "osrm:logs": "docker logs -f osrm",
-    "nominatim:up": "echo 'Removed — use pelias:up' && exit 1",
-    "nominatim:logs": "echo 'Removed — use pelias:logs' && exit 1",
     "pelias:import": "sh scripts/pelias-import.sh",
     "pelias:up": "sh scripts/pelias-up.sh",
     "pelias:down": "cd pelias/vietnam && ../../.pelias-docker/pelias compose down",

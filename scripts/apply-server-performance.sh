@@ -20,7 +20,7 @@ echo "==> docker compose (OSRM)"
 docker compose up -d --force-recreate osrm
 
 echo "==> Pelias (if imported)"
-if [ -d "$APP_DIR/.pelias-docker" ] && curl -sf "http://127.0.0.1:4000/v1/autocomplete?text=test&size=1&boundary.country=VNM" >/dev/null 2>&1; then
+if [ -d "$APP_DIR/.pelias-docker" ] && curl -sf "http://127.0.0.1:4000/v1/autocomplete?text=Bitexco&size=1" >/dev/null 2>&1; then
   sh "$APP_DIR/scripts/pelias-up.sh"
 else
   echo "Pelias not ready — run: bun run pelias:import && bun run pelias:up"
