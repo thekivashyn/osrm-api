@@ -101,22 +101,6 @@ export function createMockOsrmServer(): Server {
         });
       }
 
-      if (path.startsWith("/trip/v1/driving/")) {
-        return Response.json({
-          code: "Ok",
-          trips: [
-            {
-              distance: 12000,
-              duration: 1500,
-              weight: 1500,
-              geometry: lineString,
-              legs: [leg, leg],
-            },
-          ],
-          waypoints: [waypoint, waypoint, waypoint],
-        });
-      }
-
       if (path === "/error") {
         return Response.json({ code: "NoRoute", message: "No route found" }, { status: 400 });
       }

@@ -48,13 +48,12 @@ afterAll(() => {
 });
 
 describe("GET /", () => {
-  test("returns HTML playground", async () => {
-    const res = await fetch(`${baseUrl}/`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("text/html");
-    const html = await res.text();
-    expect(html).toContain("Routing API Playground");
-    expect(html).toContain("/api/route");
+  test("returns API info JSON (UI on port 80)", async () => {
+    const { status, body } = await apiFetch("/");
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.service).toBe("routing-api");
+    expect(String(body.message)).toContain("playaround");
   });
 });
 
@@ -75,16 +74,9 @@ describe("GET /health", () => {
 });
 
 describe("GET /docs", () => {
-  test("returns HTML documentation", async () => {
-    const res = await fetch(`${baseUrl}/docs`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("text/html");
-    const html = await res.text();
-    expect(html).toContain("/api/route");
-    expect(html).toContain("/api/table");
-    expect(html).toContain("/api/nearest");
-    expect(html).toContain("/api/match");
-    expect(html).toContain("/api/trip");
+  test("removed — docs live at UI /playaround/api", async () => {
+    const { status } = await apiFetch("/docs");
+    expect(status).toBe(404);
   });
 });
 
@@ -305,48 +297,6 @@ describe("POST /api/match — validation errors", () => {
   });
 });
 
-describe("POST /api/trip — success", () => {
-  test("returns optimized trip", async () => {
-    const { status, body } = await apiFetch("/api/trip", {
-      method: "POST",
-      body: JSON.stringify({
-        points: [HCM.from, HCM.to, { lat: 10.823099, lng: 106.629664 }],
-        roundtrip: false,
-      }),
-    });
-    expect(status).toBe(200);
-    expect(body.success).toBe(true);
-    expect(body.data.trips).toHaveLength(1);
-    expect(body.data.trips[0].distance).toBe(12000);
-    expect(body.data.waypoints).toHaveLength(3);
-  });
-
-  test("roundtrip option accepted", async () => {
-    const { status, body } = await apiFetch("/api/trip", {
-      method: "POST",
-      body: JSON.stringify({
-        points: [HCM.from, HCM.to],
-        roundtrip: true,
-        source: "first",
-        destination: "last",
-      }),
-    });
-    expect(status).toBe(200);
-    expect(body.success).toBe(true);
-  });
-});
-
-describe("POST /api/trip — validation errors", () => {
-  test("only 1 point", async () => {
-    const { status, body } = await apiFetch("/api/trip", {
-      method: "POST",
-      body: JSON.stringify({ points: [HCM.from] }),
-    });
-    expect(status).toBe(400);
-    expect(body.message).toMatch(/at least 2/);
-  });
-});
-
 describe("error response format", () => {
   test("always returns { success, message } on error", async () => {
     const { body } = await apiFetch("/api/route", {
@@ -392,9 +342,84 @@ describe("boundary coordinates", () => {
   });
 });
 
+describe("GET /api/system-status", () => {
+  test("returns 404 when proxied (X-Forwarded-For)", async () => {
+    const { status, body } = await apiFetch("/api/system-status", {
+      headers: { "X-Forwarded-For": "203.0.113.1" },
+    });
+    expect(status).toBe(404);
+    expect(body.success).toBe(false);
+  });
+
+  test("returns aggregated status on direct local access", async () => {
+    const { status, body } = await apiFetch("/api/system-status");
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data).toBeDefined();
+    const data = body.data as Record<string, unknown>;
+    expect(data.api).toBeDefined();
+    expect(data.osrmCar).toBeDefined();
+    expect(data.osrmMotor).toBeDefined();
+    expect(data.nominatim).toBeDefined();
+  });
+});
+
+describe("GET /api/osrm-motor-status", () => {
+  test("probes motor OSRM", async () => {
+    const { status, body } = await apiFetch("/api/osrm-motor-status");
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.osrm).toBe("ok");
+  });
+});
+
+describe("GET /api/request-logs", () => {
+  test("lists recorded requests with filters", async () => {
+    await apiFetch("/api/info");
+    await apiFetch("/health");
+
+    const { status, body } = await apiFetch("/api/request-logs?limit=10&path=info");
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    const data = body.data as {
+      total: number;
+      items: { path: string; method: string; id: string }[];
+    };
+    expect(data.total).toBeGreaterThan(0);
+    expect(data.items.some((e) => e.path === "/api/info")).toBe(true);
+  });
+
+  test("returns single entry by id", async () => {
+    await apiFetch("/api/info");
+    const list = await apiFetch("/api/request-logs?limit=1&path=info");
+    const data = list.body.data as { items: { id: string }[] };
+    const id = data.items[0]?.id;
+    expect(id).toBeDefined();
+
+    const { status, body } = await apiFetch(`/api/request-logs/${id}`);
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    expect((body.data as { id: string }).id).toBe(id);
+  });
+
+  test("404 for unknown log id", async () => {
+    const { status, body } = await apiFetch("/api/request-logs/00000000-0000-0000-0000-000000000000");
+    expect(status).toBe(404);
+    expect(body.success).toBe(false);
+  });
+});
+
 describe("unknown route", () => {
   test("returns 404 for unknown path", async () => {
     const res = await fetch(`${baseUrl}/api/unknown`, { method: "POST" });
     expect(res.status).toBe(404);
+  });
+
+  test("POST /api/trip removed", async () => {
+    const { status } = await apiFetch("/api/trip", {
+      method: "POST",
+      body: JSON.stringify({ points: [HCM.from, HCM.to] }),
+    });
+    expect(status).toBe(404);
   });
 });

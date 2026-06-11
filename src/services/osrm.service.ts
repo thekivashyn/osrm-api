@@ -9,12 +9,10 @@ import type {
   OsrmNearestResponse,
   OsrmRouteResponse,
   OsrmTableResponse,
-  OsrmTripResponse,
   RouteData,
   RouteOption,
   RoutingProfile,
   TableData,
-  TripData,
 } from "../types";
 import { toOsrmCoordinateString } from "../utils/validation";
 
@@ -344,30 +342,6 @@ export class OsrmService {
       tracepoints: data.tracepoints,
     };
   }
-
-  async trip(
-    points: Coordinate[],
-    options: { roundtrip?: boolean; source?: "first" | "any"; destination?: "last" | "any" } = {},
-  ): Promise<TripData> {
-    const coordinates = toOsrmCoordinateString(points);
-    const params = new URLSearchParams({
-      geometries: "geojson",
-      overview: "full",
-      steps: "true",
-      roundtrip: String(options.roundtrip ?? false),
-      source: options.source ?? "first",
-      destination: options.destination ?? "last",
-    });
-
-    const data = await this.fetch<OsrmTripResponse>(
-      `/trip/v1/driving/${coordinates}?${params.toString()}`,
-    );
-
-    return {
-      trips: data.trips,
-      waypoints: data.waypoints,
-    };
-  }
 }
 
 export const osrmService = {
@@ -383,8 +357,4 @@ export const osrmService = {
     new OsrmService(config.osrmUrl).table(sources, destinations),
   nearest: (coord: Coordinate) => new OsrmService(config.osrmUrl).nearest(coord),
   match: (points: Coordinate[]) => new OsrmService(config.osrmUrl).match(points),
-  trip: (
-    points: Coordinate[],
-    options?: { roundtrip?: boolean; source?: "first" | "any"; destination?: "last" | "any" },
-  ) => new OsrmService(config.osrmUrl).trip(points, options),
 };

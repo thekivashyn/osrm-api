@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { checkNominatimStatus, reverseGeocode, searchAddress } from "../services/geocode.service";
 import { AppError, errorResponse } from "../utils/response";
+import { sanitizeProbeMessage } from "../utils/public-probe";
 
 export const geocodeRoutes = new Elysia({ prefix: "/api" })
   .get(
@@ -57,7 +58,7 @@ export const geocodeRoutes = new Elysia({ prefix: "/api" })
     return {
       success: status.ok,
       nominatim: status.ok ? "ok" : "down",
-      url: status.url,
-      message: status.message,
+      service: "nominatim",
+      message: sanitizeProbeMessage(status.message),
     };
   });

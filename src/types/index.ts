@@ -94,18 +94,6 @@ export interface MatchData {
   tracepoints: (OsrmWaypoint | null)[];
 }
 
-export interface TripRequest {
-  points: Coordinate[];
-  roundtrip?: boolean;
-  source?: "first" | "any";
-  destination?: "last" | "any";
-}
-
-export interface TripData {
-  trips: OsrmTrip[];
-  waypoints: OsrmWaypoint[];
-}
-
 export interface OsrmWaypoint {
   hint: string;
   distance: number;
@@ -143,14 +131,6 @@ export interface OsrmMatching {
   legs: OsrmLeg[];
 }
 
-export interface OsrmTrip {
-  distance: number;
-  duration: number;
-  weight: number;
-  geometry: GeoJsonLineString;
-  legs: OsrmLeg[];
-}
-
 export interface OsrmRouteResponse {
   code: string;
   routes: Array<{
@@ -184,12 +164,5 @@ export interface OsrmMatchResponse {
   code: string;
   matchings: OsrmMatching[];
   tracepoints: (OsrmWaypoint | null)[];
-  message?: string;
-}
-
-export interface OsrmTripResponse {
-  code: string;
-  trips: OsrmTrip[];
-  waypoints: OsrmWaypoint[];
   message?: string;
 }

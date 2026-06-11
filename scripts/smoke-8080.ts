@@ -111,31 +111,6 @@ const cases: Case[] = [
     expectStatus: 400,
     expect: (b) => b.success === false,
   },
-  {
-    name: "POST /api/trip — success",
-    method: "POST",
-    path: "/api/trip",
-    body: {
-      points: [HCM.from, HCM.to, { lat: 10.823099, lng: 106.629664 }],
-      roundtrip: false,
-    },
-    expectStatus: 200,
-    expect: (b) => b.success === true && Array.isArray((b.data as Record<string, unknown>)?.trips),
-  },
-  {
-    name: "POST /api/trip — only 1 point",
-    method: "POST",
-    path: "/api/trip",
-    body: { points: [HCM.from] },
-    expectStatus: 400,
-    expect: (b) => b.success === false,
-  },
-  {
-    name: "GET /docs — HTML",
-    method: "GET",
-    path: "/docs",
-    expectStatus: 200,
-  },
 ];
 
 async function runCase(c: Case): Promise<{ pass: boolean; status: number; body: unknown }> {
@@ -200,7 +175,6 @@ async function main() {
           data.duration != null && `duration=${data.duration}`,
           data.waypoint != null && "waypoint=ok",
           data.matchings != null && `matchings=${(data.matchings as unknown[]).length}`,
-          data.trips != null && `trips=${(data.trips as unknown[]).length}`,
           data.distances != null && "matrix=ok",
         ]
           .filter(Boolean)

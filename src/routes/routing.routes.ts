@@ -1,13 +1,7 @@
 import { Elysia } from "elysia";
 import { routeController } from "../controllers/routing.controller";
 import { AppError, errorResponse } from "../utils/response";
-import type {
-  MatchRequest,
-  NearestRequest,
-  RouteRequest,
-  TableRequest,
-  TripRequest,
-} from "../types";
+import type { MatchRequest, NearestRequest, RouteRequest, TableRequest } from "../types";
 
 function isAppError(error: unknown): error is AppError {
   return error instanceof AppError || (error instanceof Error && error.name === "AppError");
@@ -37,7 +31,4 @@ export const routingRoutes = new Elysia({ prefix: "/api" })
   )
   .post("/match", ({ body, set }) =>
     run(set, () => routeController.match(body as MatchRequest)),
-  )
-  .post("/trip", ({ body, set }) =>
-    run(set, () => routeController.trip(body as TripRequest)),
   );

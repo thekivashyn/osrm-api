@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --color-accent: #10b981;
+  --color-accent-2: #06b6d4;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-[#06080c] text-slate-100 font-sans antialiased min-h-full;
+}
+
+body:not(.playground-active) {
+  background-color: #06080c;
+  background-image:
+    radial-gradient(ellipse 120% 80% at 50% -30%, rgba(245, 158, 11, 0.07), transparent 50%),
+    radial-gradient(ellipse 60% 50% at 100% 50%, rgba(15, 23, 42, 0.9), transparent),
+    radial-gradient(ellipse 60% 50% at 0% 80%, rgba(15, 23, 42, 0.8), transparent);
+}
+
+body.playground-active {
+  background-color: #000;
+  background-image: none;
+}
+
+.glass-panel {
+  @apply border border-white/[0.06] bg-slate-900/40 shadow-2xl shadow-black/40 backdrop-blur-xl;
+}
+
+.panel-black {
+  @apply border border-white/[0.08] bg-black/92 shadow-2xl shadow-black backdrop-blur-xl;
+}
+
+.leaflet-container {
+  font-family: var(--font-sans);
+  background: #000 !important;
+}
+
+.playground-ui .leaflet-control-zoom {
+  display: none !important;
+}
+
+.playground-ui .leaflet-control-attribution {
+  background: rgba(0, 0, 0, 0.75) !important;
+  color: #525252 !important;
+  font-size: 9px !important;
+  padding: 2px 6px !important;
+  border-radius: 4px 0 0 0 !important;
+}
+
+.playground-ui .leaflet-control-attribution a {
+  color: #737373 !important;
+}
+
+.route-polyline-active {
+  filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.55));
+}
+
+.route-polyline-alt {
+  opacity: 0.65;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes gate-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.2s infinite;
+}
+
+.gate-enter {
+  animation: gate-fade-in 0.45s ease-out both;
+}
