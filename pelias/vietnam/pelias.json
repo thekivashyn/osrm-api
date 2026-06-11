@@ -20,12 +20,17 @@
     "services": {
       "placeholder": { "url": "http://placeholder:4100" },
       "pip": { "url": "http://pip:4200" },
+      "interpolation": { "url": "http://interpolation:4300" },
       "libpostal": { "url": "http://libpostal:4400" }
     }
   },
   "imports": {
     "adminLookup": {
       "enabled": true
+    },
+    "geonames": {
+      "datapath": "/data/geonames",
+      "countryCode": "VN"
     },
     "openstreetmap": {
       "leveldbpath": "/tmp",

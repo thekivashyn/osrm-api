@@ -65,6 +65,28 @@ services:
       - "${DATA_DIR}:/data"
       - "${OSM_PBF:-../../data/vietnam-latest.osm.pbf}:/data/openstreetmap/vietnam-latest.osm.pbf:ro"
 
+  geonames:
+    image: pelias/geonames:master
+    container_name: pelias_geonames
+    profiles: ["import"]
+    volumes:
+      - "./pelias.json:/code/pelias.json"
+      - "${DATA_DIR}:/data"
+
+  interpolation:
+    image: pelias/interpolation:master
+    container_name: pelias_interpolation
+    restart: always
+    environment:
+      - "PORT=4300"
+      - "OSMPATH=/data/openstreetmap"
+      - "POLYLINEPATH=/data/polylines"
+    ports: ["127.0.0.1:4300:4300"]
+    volumes:
+      - "./pelias.json:/code/pelias.json"
+      - "${DATA_DIR}:/data"
+      - "${OSM_PBF:-../../data/vietnam-latest.osm.pbf}:/data/openstreetmap/vietnam-latest.osm.pbf:ro"
+
   csv-importer:
     image: pelias/csv-importer:master
     container_name: pelias_csv_importer

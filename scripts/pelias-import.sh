@@ -80,9 +80,16 @@ echo "==> Prepare placeholder (builds from WOF sqlite)"
 echo "==> Import OSM (admin lookup attaches city/district to every record)"
 "$PELIAS" import osm
 
+echo "==> Geonames VN POIs"
+"$PELIAS" download geonames
+"$PELIAS" import geonames
+
 echo "==> Street layer (road network polylines)"
 "$PELIAS" prepare polylines
 "$PELIAS" import polylines
+
+echo "==> House-number interpolation database (Google-style estimates)"
+"$PELIAS" prepare interpolation
 
 if [ -n "$(find data/custom-addresses -name '*.csv' 2>/dev/null | head -1)" ]; then
   echo "==> Import custom CSV addresses"

@@ -186,10 +186,17 @@ function buildQueryVariants(q: string): QueryVariant[] {
   const variants: QueryVariant[] = [{ text: q }];
   const head = (q.split(",")[0] ?? "").trim();
   if (head && head !== q) variants.push({ text: head });
-  const alley = head.match(/^(\d+)\/[\d/]+\s+(.+)/);
+  // "230/25 X" = house 25 inside alley 230; "269/22/4/25 X" = house 25
+  // inside nested alley 269/22/4 (OSM names alleys as streets).
+  const alley = head.match(/^(\d+(?:\/\d+)*)\/(\d+)\s+(.+)/);
   if (alley && !/^(hẻm|ngõ|ngách)\s/i.test(head)) {
-    variants.push({ text: `Hẻm ${alley[1]} ${alley[2]}`, streetLayerOnly: true }); // miền Nam
-    variants.push({ text: `Ngõ ${alley[1]} ${alley[2]}`, streetLayerOnly: true }); // miền Bắc
+    const [, chain, house, street] = alley;
+    // House number on the alley street — exact OSM point or interpolated.
+    variants.push({ text: `${house} Hẻm ${chain} ${street}` });
+    variants.push({ text: `${house} Ngõ ${chain} ${street}` });
+    // The alley itself.
+    variants.push({ text: `Hẻm ${chain} ${street}`, streetLayerOnly: true }); // miền Nam
+    variants.push({ text: `Ngõ ${chain} ${street}`, streetLayerOnly: true }); // miền Bắc
   }
   const alleyMouth = head.replace(/^(\d+)\/[\d/]+\s+/, "$1 ");
   if (alleyMouth && alleyMouth !== head) variants.push({ text: alleyMouth });

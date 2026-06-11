@@ -87,6 +87,8 @@ describe("searchAddress — Pelias", () => {
     expect(requestedTexts).toEqual([
       "230/25 Lạc Long Quân, Bình Thới, HCM",
       "230/25 Lạc Long Quân",
+      "25 Hẻm 230 Lạc Long Quân",
+      "25 Ngõ 230 Lạc Long Quân",
       "Hẻm 230 Lạc Long Quân",
       "Ngõ 230 Lạc Long Quân",
       "230 Lạc Long Quân",
