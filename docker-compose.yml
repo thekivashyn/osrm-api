@@ -9,6 +9,8 @@ services:
       - ./docker/car-vietnam.lua:/profiles/car-vietnam.lua:ro
       - ./docker/motorbike-vietnam.lua:/profiles/motorbike-vietnam.lua:ro
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    environment:
+      OSRM_THREADS: "2"
     ports:
       - "127.0.0.1:5050:5000"
       - "127.0.0.1:5051:5001"
@@ -30,6 +32,10 @@ services:
       IMPORT_WIKIPEDIA: "false"
       NOMINATIM_PASSWORD: nominatim
       REPLICATION_URL: https://download.geofabrik.de/asia/vietnam-updates/
+      THREADS: "4"
+      POSTGRES_SHARED_BUFFERS: 3GB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 12GB
+      POSTGRES_WORK_MEM: 64MB
     volumes:
       - nominatim-db:/var/lib/postgresql/14/main
       - ./data:/nominatim/data

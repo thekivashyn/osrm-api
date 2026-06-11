@@ -1,7 +1,7 @@
 import { createApp } from "./src/app";
 import { config } from "./src/config/env";
 
-const app = createApp().listen(config.port);
+const app = createApp().listen({ port: config.port, hostname: config.host });
 
 console.log(
   `Routing API running at http://${app.server?.hostname}:${app.server?.port}`,

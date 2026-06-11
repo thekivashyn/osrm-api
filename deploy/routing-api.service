@@ -1,0 +1,18 @@
+[Unit]
+Description=Routing API (Bun)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/routing-api
+EnvironmentFile=/opt/routing-api/.env
+Environment=HOST=127.0.0.1
+ExecStart=/root/.bun/bin/bun run start
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

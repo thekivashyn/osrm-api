@@ -1,4 +1,7 @@
 export const config = {
+  get host() {
+    return process.env.HOST ?? "127.0.0.1";
+  },
   get port() {
     return Number(process.env.PORT ?? 8080);
   },

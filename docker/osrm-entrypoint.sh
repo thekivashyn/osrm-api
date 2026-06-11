@@ -60,11 +60,14 @@ fi
 prepare_graph "${CAR_BASE}" "/profiles/car-vietnam.lua" "car"
 prepare_graph "${MOTOR_BASE}" "/profiles/motorbike-vietnam.lua" "motorbike"
 
-echo "OSRM car ready on port 5000, motorbike on port 5001 (container)."
+OSRM_THREADS="${OSRM_THREADS:-2}"
 
-osrm-routed --algorithm mld -p 5000 "${CAR_BASE}.osrm" &
+echo "OSRM car ready on port 5000, motorbike on port 5001 (container)."
+echo "osrm-routed: algorithm=mld mmap=on threads=${OSRM_THREADS}"
+
+osrm-routed --algorithm mld --mmap -t "${OSRM_THREADS}" -p 5000 "${CAR_BASE}.osrm" &
 CAR_PID=$!
-osrm-routed --algorithm mld -p 5001 "${MOTOR_BASE}.osrm" &
+osrm-routed --algorithm mld --mmap -t "${OSRM_THREADS}" -p 5001 "${MOTOR_BASE}.osrm" &
 MOTOR_PID=$!
 
 trap 'kill "$CAR_PID" "$MOTOR_PID" 2>/dev/null; wait' INT TERM
