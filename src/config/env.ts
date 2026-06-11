@@ -21,8 +21,8 @@ export const config = {
   },
   serviceName: "routing-api",
   version: "1.0.0",
-  get nominatimUrl() {
-    return process.env.NOMINATIM_URL ?? "http://localhost:9091";
+  get peliasUrl() {
+    return process.env.PELIAS_URL ?? "http://127.0.0.1:4000";
   },
   geocodeUserAgent: process.env.GEOCODE_USER_AGENT ?? "routing-api-internal/1.0 (dev playground)",
   get carDurationFactor() {

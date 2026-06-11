@@ -1,6 +1,6 @@
 import { Elysia, t } from "elysia";
 import { config } from "../config/env";
-import { checkNominatimStatus } from "../services/geocode.service";
+import { checkPeliasStatus } from "../services/geocode.service";
 import {
   getRequestLogById,
   queryRequestLogs,
@@ -131,10 +131,10 @@ export const systemRoutes = new Elysia()
   });
 
 async function probeSystemStatus() {
-  const [osrmCar, osrmMotor, nominatim] = await Promise.all([
+  const [osrmCar, osrmMotor, pelias] = await Promise.all([
     probeOsrm(config.osrmUrl),
     probeOsrm(config.osrmMotorUrl),
-    checkNominatimStatus(),
+    checkPeliasStatus(),
   ]);
   return {
     success: true,
@@ -146,10 +146,10 @@ async function probeSystemStatus() {
       },
       osrmCar: publicProbeResult("osrm-car", osrmCar),
       osrmMotor: publicProbeResult("osrm-motor", osrmMotor),
-      nominatim: {
-        status: nominatim.ok ? ("ok" as const) : ("down" as const),
-        service: "nominatim",
-        message: sanitizeProbeMessage(nominatim.message),
+      pelias: {
+        status: pelias.ok ? ("ok" as const) : ("down" as const),
+        service: "pelias",
+        message: sanitizeProbeMessage(pelias.message),
       },
       checkedAt: new Date().toISOString(),
     },

@@ -6,6 +6,6 @@ const app = createApp().listen({ port: config.port, hostname: config.host });
 console.log(
   `Routing API running at http://${app.server?.hostname}:${app.server?.port}`,
 );
-console.log(`Geocoding: ${config.nominatimUrl}`);
+console.log(`Geocoding: ${config.peliasUrl}`);
 
 export type App = typeof app;

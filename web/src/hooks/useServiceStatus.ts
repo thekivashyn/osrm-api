@@ -12,7 +12,7 @@ export function useServiceStatus() {
         const [o, g] = await Promise.all([fetchOsrmStatus(), fetchGeocodeStatus()]);
         if (cancelled) return;
         setOsrm(o.osrm === "ok" ? "ok" : "down");
-        setGeo(g.nominatim === "ok" ? "ok" : "down");
+        setGeo(g.pelias === "ok" ? "ok" : "down");
       } catch {
         if (!cancelled) {
           setOsrm("down");

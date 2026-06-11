@@ -1,0 +1,103 @@
+networks:
+  default:
+    driver: bridge
+
+services:
+  libpostal:
+    image: pelias/libpostal-service
+    container_name: pelias_libpostal
+    restart: always
+    ports: ["127.0.0.1:4400:4400"]
+
+  schema:
+    image: pelias/schema:master
+    container_name: pelias_schema
+    volumes:
+      - "./pelias.json:/code/pelias.json"
+
+  api:
+    image: pelias/api:master
+    container_name: pelias_api
+    restart: always
+    environment: ["PORT=4000"]
+    ports: ["127.0.0.1:4000:4000"]
+    volumes:
+      - "./pelias.json:/code/pelias.json"
+    depends_on:
+      - elasticsearch
+      - libpostal
+      - pip
+      - placeholder
+
+  placeholder:
+    image: pelias/placeholder:master
+    container_name: pelias_placeholder
+    restart: always
+    environment: ["PORT=4100"]
+    ports: ["127.0.0.1:4100:4100"]
+    volumes:
+      - "./pelias.json:/code/pelias.json"
+      - "${DATA_DIR}:/data"
+
+  whosonfirst:
+    image: pelias/whosonfirst:master
+    container_name: pelias_whosonfirst
+    profiles: ["import"]
+    volumes:
+      - "./pelias.json:/code/pelias.json"
+      - "${DATA_DIR}:/data"
+
+  openstreetmap:
+    image: pelias/openstreetmap:master
+    container_name: pelias_openstreetmap
+    profiles: ["import"]
+    volumes:
+      - "./pelias.json:/code/pelias.json"
+      - "${DATA_DIR}:/data"
+
+  csv-importer:
+    image: pelias/csv-importer:master
+    container_name: pelias_csv_importer
+    profiles: ["import"]
+    volumes:
+      - "./pelias.json:/code/pelias.json"
+      - "${DATA_DIR}:/data"
+      - "../../data/custom-addresses:/data/custom-addresses:ro"
+
+  interpolation:
+    image: pelias/interpolation:master
+    container_name: pelias_interpolation
+    restart: always
+    environment: ["PORT=4300"]
+    ports: ["127.0.0.1:4300:4300"]
+    volumes:
+      - "./pelias.json:/code/pelias.json"
+      - "${DATA_DIR}:/data"
+
+  pip:
+    image: pelias/pip-service:master
+    container_name: pelias_pip
+    restart: always
+    environment: ["PORT=4200"]
+    ports: ["127.0.0.1:4200:4200"]
+    volumes:
+      - "./pelias.json:/code/pelias.json"
+      - "${DATA_DIR}:/data"
+
+  elasticsearch:
+    image: pelias/elasticsearch:7.17.27
+    container_name: pelias_elasticsearch
+    restart: always
+    ports: ["127.0.0.1:9200:9200", "127.0.0.1:9300:9300"]
+    volumes:
+      - "${DATA_DIR}/elasticsearch:/usr/share/elasticsearch/data"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    cap_add: ["IPC_LOCK"]
+    environment:
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"

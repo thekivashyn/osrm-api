@@ -1,19 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
-  buildViewbox,
   clearGeocodeCaches,
   reverseGeocode,
   searchAddress,
 } from "../src/services/geocode.service";
 import { haversineKm } from "../src/utils/geo";
 
-describe("buildViewbox", () => {
-  test("builds Nominatim corner string from center and delta", () => {
-    expect(buildViewbox(10.78, 106.69, 0.35)).toBe("106.34000,11.13000,107.04000,10.43000");
-  });
-});
-
-describe("searchAddress — location bias", () => {
+describe("searchAddress — Pelias", () => {
   const originalFetch = globalThis.fetch;
 
   afterEach(() => {
@@ -21,44 +14,67 @@ describe("searchAddress — location bias", () => {
     clearGeocodeCaches();
   });
 
-  test("includes viewbox when lat/lng provided", async () => {
+  test("calls Pelias autocomplete with focus and country boundary", async () => {
     let requestedUrl = "";
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       requestedUrl = String(input);
-      return Response.json([
-        { lat: "10.78", lon: "106.69", display_name: "Test, Ho Chi Minh City, Vietnam" },
-      ]);
+      return Response.json({
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [106.69, 10.78] },
+            properties: { label: "Le Loi, Ho Chi Minh City, Vietnam", layer: "street" },
+          },
+        ],
+      });
     }) as typeof fetch;
 
-    await searchAddress("Le Loi", 5, { lat: 10.78, lng: 106.69 });
+    const results = await searchAddress("Le Loi", 5, { lat: 10.78, lng: 106.69 });
 
     const url = new URL(requestedUrl);
-    expect(url.searchParams.get("viewbox")).toBe("106.34000,11.13000,107.04000,10.43000");
-    expect(url.searchParams.get("accept-language")).toBe("vi");
-    expect(url.searchParams.get("countrycodes")).toBe("vn");
+    expect(url.pathname).toContain("/v1/autocomplete");
+    expect(url.searchParams.get("text")).toBe("Le Loi");
+    expect(url.searchParams.get("boundary.country")).toBe("VNM");
+    expect(url.searchParams.get("focus.point.lat")).toBe("10.78");
+    expect(results[0]?.displayName).toContain("Le Loi");
+    expect(results[0]?.layer).toBe("street");
   });
 
-  test("omits viewbox when coordinates missing", async () => {
+  test("uses /v1/search for queries with digits", async () => {
     let requestedUrl = "";
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       requestedUrl = String(input);
-      return Response.json([
-        { lat: "21.03", lon: "105.85", display_name: "Le Loi, Hanoi, Vietnam" },
-      ]);
+      return Response.json({ type: "FeatureCollection", features: [] });
     }) as typeof fetch;
 
-    await searchAddress("Le Loi", 5);
+    await searchAddress("230/25 lac long", 5, { lat: 10.78, lng: 106.69 });
 
-    expect(new URL(requestedUrl).searchParams.has("viewbox")).toBe(false);
+    expect(new URL(requestedUrl).pathname).toContain("/v1/search");
+  });
+
+  test("returns empty array when no features", async () => {
+    globalThis.fetch = (async () =>
+      Response.json({ type: "FeatureCollection", features: [] })) as typeof fetch;
+
+    const results = await searchAddress("nowhere xyz", 5);
+    expect(results).toEqual([]);
   });
 
   test("returns cached results without second fetch", async () => {
     let fetchCount = 0;
     globalThis.fetch = (async () => {
       fetchCount += 1;
-      return Response.json([
-        { lat: "10.78", lon: "106.69", display_name: "Cached, Ho Chi Minh City, Vietnam" },
-      ]);
+      return Response.json({
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [106.69, 10.78] },
+            properties: { label: "Cached, Ho Chi Minh City, Vietnam" },
+          },
+        ],
+      });
     }) as typeof fetch;
 
     await searchAddress("Cached", 5, { lat: 10.78, lng: 106.69 });
@@ -66,19 +82,9 @@ describe("searchAddress — location bias", () => {
 
     expect(fetchCount).toBe(1);
   });
-
-  test("includes distanceKm when bias provided", async () => {
-    globalThis.fetch = (async () =>
-      Response.json([
-        { lat: "10.78", lon: "106.69", display_name: "Near, Ho Chi Minh City, Vietnam" },
-      ])) as typeof fetch;
-
-    const results = await searchAddress("Near", 5, { lat: 10.78, lng: 106.69 });
-    expect(results[0]?.distanceKm).toBe(0);
-  });
 });
 
-describe("reverseGeocode", () => {
+describe("reverseGeocode — Pelias", () => {
   const originalFetch = globalThis.fetch;
 
   afterEach(() => {
@@ -86,14 +92,19 @@ describe("reverseGeocode", () => {
     clearGeocodeCaches();
   });
 
-  test("reverse geocodes coordinates", async () => {
+  test("reverse geocodes coordinates via /v1/reverse", async () => {
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
-      expect(url.pathname).toContain("/reverse");
+      expect(url.pathname).toContain("/v1/reverse");
       return Response.json({
-        lat: "10.78",
-        lon: "106.69",
-        display_name: "Test Street, Ho Chi Minh City, Vietnam",
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [106.69, 10.78] },
+            properties: { label: "Test Street, Ho Chi Minh City, Vietnam" },
+          },
+        ],
       });
     }) as typeof fetch;
 

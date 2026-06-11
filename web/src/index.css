@@ -93,6 +93,20 @@ body.playground-active {
   color: #737373 !important;
 }
 
+.search-dropdown {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.search-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+
+.search-dropdown::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
 .route-polyline-active {
   filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.55));
 }

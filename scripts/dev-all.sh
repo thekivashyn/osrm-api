@@ -6,6 +6,7 @@ trap 'kill 0 2>/dev/null' EXIT INT TERM
 
 echo "API  → http://127.0.0.1:8080"
 echo "UI   → http://127.0.0.1 (port 80 — may need sudo on macOS)"
+echo "Geo  → Pelias on server (PELIAS_URL in .env.development)"
 
 NODE_ENV=development bun --env-file=.env.development --env-file=.env run --watch server.ts &
 pnpm --dir web dev &

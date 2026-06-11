@@ -29,7 +29,7 @@ export function useSystemMonitor(pollMs = 30_000) {
     data != null &&
     data.osrmCar.status === "ok" &&
     data.osrmMotor.status === "ok" &&
-    data.nominatim.status === "ok";
+    data.pelias.status === "ok";
 
   return { data, loading, error, refresh, allOk };
 }

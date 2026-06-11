@@ -1,7 +1,6 @@
 import { config } from "../../config/env";
 
 export function renderPlaygroundHtml(): string {
-  const nominatimUrl = config.nominatimUrl.replace(/\/$/, "");
   const version = config.version;
 
   return `<!DOCTYPE html>
@@ -1842,7 +1841,7 @@ export function renderPlaygroundHtml(): string {
     fetch("/health").then(r => r.json()).then(d => setPill("health", d.success, d.success ? "API ok" : "API err"));
     fetch("/api/osrm-status").then(r => r.json()).then(d => setPill("osrm", d.osrm === "ok", d.osrm === "ok" ? "OSRM ok" : "OSRM down"));
     fetch("/api/geocode-status").then(r => r.json()).then(d => {
-      setPill("geo", d.nominatim === "ok", d.nominatim === "ok" ? "Geo ok" : "Geo down");
+      setPill("geo", d.pelias === "ok", d.pelias === "ok" ? "Geo ok" : "Geo down");
       if (!d.success) document.getElementById("geoText").title = d.message || "";
     });
 

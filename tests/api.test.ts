@@ -360,7 +360,7 @@ describe("GET /api/system-status", () => {
     expect(data.api).toBeDefined();
     expect(data.osrmCar).toBeDefined();
     expect(data.osrmMotor).toBeDefined();
-    expect(data.nominatim).toBeDefined();
+    expect(data.pelias).toBeDefined();
   });
 });
 

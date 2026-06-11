@@ -9,13 +9,13 @@ export interface GeocodeResult {
   displayName: string;
   /** Distance from search bias point in km, when bias coords provided. */
   distanceKm?: number;
+  /** Pelias layer: address, street, venue, locality, … */
+  layer?: string;
 }
 
 export interface GeocodeSearchOptions {
   lat?: number;
   lng?: number;
-  /** Half-width of Nominatim viewbox in degrees (~0.35 ≈ 38 km at HCMC latitude). */
-  biasDelta?: number;
 }
 
 const geocodeCache = new TtlCache<GeocodeResult[]>(config.geocodeCacheTtlMs);
@@ -25,17 +25,6 @@ const reverseCache = new TtlCache<GeocodeResult>(config.geocodeCacheTtlMs);
 export function clearGeocodeCaches(): void {
   geocodeCache.clear();
   reverseCache.clear();
-}
-
-/** Nominatim viewbox: left, top, right, bottom (lon/lat corners). */
-export function buildViewbox(lat: number, lng: number, delta: number): string {
-  const f = (n: number) => n.toFixed(5);
-  return [
-    f(lng - delta),
-    f(lat + delta),
-    f(lng + delta),
-    f(lat - delta),
-  ].join(",");
 }
 
 function geocodeCacheKey(query: string, limit: number, options: GeocodeSearchOptions): string {
@@ -63,54 +52,119 @@ function parseBiasCoords(
   return null;
 }
 
-function mapRows(
-  rows: Array<{ lat: string; lon: string; display_name: string }>,
-  options: GeocodeSearchOptions,
+type PeliasFeature = {
+  type: "Feature";
+  geometry: { type: "Point"; coordinates: [number, number] };
+  properties: {
+    label?: string;
+    name?: string;
+    distance?: number;
+    layer?: string;
+  };
+};
+
+type PeliasResponse = {
+  type: "FeatureCollection";
+  features: PeliasFeature[];
+};
+
+function peliasBaseUrl(): string {
+  return config.peliasUrl.replace(/\/$/, "");
+}
+
+function mapPeliasFeatures(
+  features: PeliasFeature[],
+  bias: { lat: number; lng: number } | null,
 ): GeocodeResult[] {
-  const bias = parseBiasCoords(options.lat, options.lng);
-  return rows.map((row) => {
-    const lat = Number(row.lat);
-    const lng = Number(row.lon);
+  return features.map((f) => {
+    const [lng, lat] = f.geometry.coordinates;
+    const props = f.properties ?? {};
+    const displayName = props.label ?? props.name ?? `${lat}, ${lng}`;
     const result: GeocodeResult = {
       lat,
       lng,
-      displayName: row.display_name,
+      displayName,
+      layer: props.layer,
     };
-    if (bias) {
+    if (typeof props.distance === "number" && Number.isFinite(props.distance)) {
+      result.distanceKm = props.distance / 1000;
+    } else if (bias) {
       result.distanceKm = haversineKm(bias.lat, bias.lng, lat, lng);
     }
     return result;
   });
 }
 
-export async function checkNominatimStatus(): Promise<{
+function buildPeliasUrl(path: string, params: Record<string, string>): URL {
+  const url = new URL(`${peliasBaseUrl()}${path}`);
+  for (const [k, v] of Object.entries(params)) {
+    url.searchParams.set(k, v);
+  }
+  return url;
+}
+
+const PELIAS_TIMEOUT_MS = 4_000;
+
+async function peliasFetch(url: URL): Promise<PeliasResponse> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: { "User-Agent": config.geocodeUserAgent },
+      signal: AbortSignal.timeout(PELIAS_TIMEOUT_MS),
+    });
+  } catch {
+    throw new AppError("Geocoding service unreachable", 502);
+  }
+
+  if (!response.ok) {
+    throw new AppError(`Geocoding failed with HTTP ${response.status}`, 502);
+  }
+
+  const data = (await response.json()) as PeliasResponse;
+  if (!data || !Array.isArray(data.features)) {
+    throw new AppError("Invalid geocoding response", 502);
+  }
+  return data;
+}
+
+export async function checkPeliasStatus(): Promise<{
   ok: boolean;
   url: string;
   message: string;
 }> {
-  const url = config.nominatimUrl.replace(/\/$/, "");
+  const url = peliasBaseUrl();
 
   try {
-    const res = await fetch(`${url}/status`);
-    const text = (await res.text()).trim();
+    const probe = buildPeliasUrl("/v1/autocomplete", {
+      text: "Ho Chi Minh",
+      size: "1",
+      "boundary.country": "VNM",
+    });
+    const res = await fetch(probe, {
+      headers: { "User-Agent": config.geocodeUserAgent },
+      signal: AbortSignal.timeout(PELIAS_TIMEOUT_MS),
+    });
 
-    if (res.ok && text.includes("OK")) {
-      return { ok: true, url, message: "Nominatim ready" };
+    if (res.ok) {
+      return { ok: true, url, message: "Pelias ready" };
     }
 
     return {
       ok: false,
       url,
-      message: text || `HTTP ${res.status} — import may still be running`,
+      message: `HTTP ${res.status} — index may still be importing`,
     };
   } catch {
     return {
       ok: false,
       url,
-      message: `Cannot reach Nominatim at ${url}. Run: bun run nominatim:up`,
+      message: `Cannot reach Pelias at ${url}. Prod: bun run pelias:import on server. Dev: check PELIAS_URL / allow-dev-ip.`,
     };
   }
 }
+
+/** @deprecated use checkPeliasStatus */
+export const checkNominatimStatus = checkPeliasStatus;
 
 export async function searchAddress(
   query: string,
@@ -129,55 +183,32 @@ export async function searchAddress(
     return cached;
   }
 
-  const url = new URL(`${config.nominatimUrl}/search`);
-  url.searchParams.set("q", q);
-  url.searchParams.set("format", "json");
-  url.searchParams.set("limit", String(cappedLimit));
-  url.searchParams.set("countrycodes", "vn");
-  url.searchParams.set("accept-language", "vi");
+  const bias = parseBiasCoords(options.lat, options.lng);
+  const params: Record<string, string> = {
+    text: q,
+    size: String(cappedLimit),
+    "boundary.country": "VNM",
+    lang: "vi",
+  };
 
-  const { lat, lng, biasDelta = 0.35 } = options;
-  const bias = parseBiasCoords(lat, lng);
   if (bias) {
-    url.searchParams.set("viewbox", buildViewbox(bias.lat, bias.lng, biasDelta));
+    params["focus.point.lat"] = String(bias.lat);
+    params["focus.point.lon"] = String(bias.lng);
   }
 
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      headers: { "User-Agent": config.geocodeUserAgent },
-    });
-  } catch {
-    throw new AppError("Geocoding service unreachable", 502);
+  // Autocomplete for partial input; search for longer structured queries.
+  const endpoint = q.length >= 12 || /\d/.test(q) ? "/v1/search" : "/v1/autocomplete";
+  const data = await peliasFetch(buildPeliasUrl(endpoint, params));
+
+  if (data.features.length === 0) {
+    geocodeCache.set(cacheKey, []);
+    return [];
   }
 
-  if (!response.ok) {
-    if (response.status === 429) {
-      const retryAfter = Number(response.headers.get("Retry-After") || 60);
-      throw new AppError(
-        `Geocoding rate limited (429). Public Nominatim max ~1 req/s — thử lại sau ${retryAfter}s`,
-        429,
-      );
-    }
-    throw new AppError(`Geocoding failed with HTTP ${response.status}`, 502);
+  const results = mapPeliasFeatures(data.features, bias);
+  if (bias) {
+    results.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
   }
-
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
-    throw new AppError("Geocoding rate limited — đợi ~60 giây rồi thử lại", 429);
-  }
-
-  const rows = (await response.json()) as Array<{
-    lat: string;
-    lon: string;
-    display_name: string;
-  }>;
-
-  if (!Array.isArray(rows) || rows.length === 0) {
-    throw new AppError("No address found", 404);
-  }
-
-  const results = mapRows(rows, options);
   geocodeCache.set(cacheKey, results);
   return results;
 }
@@ -194,43 +225,21 @@ export async function reverseGeocode(lat: number, lng: number): Promise<GeocodeR
     return cached;
   }
 
-  const url = new URL(`${config.nominatimUrl}/reverse`);
-  url.searchParams.set("lat", String(lat));
-  url.searchParams.set("lon", String(lng));
-  url.searchParams.set("format", "json");
-  url.searchParams.set("accept-language", "vi");
-  url.searchParams.set("countrycodes", "vn");
+  const data = await peliasFetch(
+    buildPeliasUrl("/v1/reverse", {
+      "point.lat": String(lat),
+      "point.lon": String(lng),
+      size: "1",
+      lang: "vi",
+    }),
+  );
 
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      headers: { "User-Agent": config.geocodeUserAgent },
-    });
-  } catch {
-    throw new AppError("Geocoding service unreachable", 502);
+  const feature = data.features[0];
+  if (!feature) {
+    throw new AppError("No address found", 404);
   }
 
-  if (!response.ok) {
-    throw new AppError(`Reverse geocoding failed with HTTP ${response.status}`, 502);
-  }
-
-  const row = (await response.json()) as {
-    lat?: string;
-    lon?: string;
-    display_name?: string;
-    error?: string;
-  };
-
-  if (!row.display_name) {
-    throw new AppError(row.error || "No address found", 404);
-  }
-
-  const result: GeocodeResult = {
-    lat: Number(row.lat ?? coords.lat),
-    lng: Number(row.lon ?? coords.lng),
-    displayName: row.display_name,
-  };
-
-  reverseCache.set(cacheKey, result);
-  return result;
+  const mapped = mapPeliasFeatures([feature], null)[0];
+  reverseCache.set(cacheKey, mapped);
+  return mapped;
 }

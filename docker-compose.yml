@@ -21,32 +21,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 600s
-
-  nominatim:
-    image: mediagis/nominatim:4.4
-    container_name: nominatim
-    ports:
-      - "127.0.0.1:9091:8080"
-    environment:
-      PBF_PATH: /nominatim/data/vietnam-latest.osm.pbf
-      IMPORT_WIKIPEDIA: "false"
-      NOMINATIM_PASSWORD: nominatim
-      REPLICATION_URL: https://download.geofabrik.de/asia/vietnam-updates/
-      THREADS: "4"
-      POSTGRES_SHARED_BUFFERS: 3GB
-      POSTGRES_EFFECTIVE_CACHE_SIZE: 12GB
-      POSTGRES_WORK_MEM: 64MB
-    volumes:
-      - nominatim-db:/var/lib/postgresql/14/main
-      - ./data:/nominatim/data
-    shm_size: 4gb
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/status | grep -q OK"]
-      interval: 60s
-      timeout: 10s
-      retries: 5
-      start_period: 7200s
-
-volumes:
-  nominatim-db:

@@ -1,204 +1,67 @@
 # Routing API
 
-Internal REST API for road routing, distance matrices, map matching, and trip optimization — powered by [OSRM](http://project-osrm.org/) and built with **Bun** + **Elysia**.
-
-Designed for internal use (similar to Google Directions / Grab routing backends).
+Internal REST API for road routing + **Pelias** geocoding (server-hosted), built with **Bun** + **Elysia** + React console UI.
 
 ## Architecture
 
 ```
-Client → Routing API (:8080, Bun) → OSRM (:5050) + Nominatim (:9091) — both Docker, Vietnam PBF
+Local dev:  UI (:80) + API (:8080) → OSRM local (:5050) + Pelias remote (server :4000)
+Production: nginx (:80) + API (:8080) → OSRM + Pelias (same server)
 ```
 
-| Layer | Role |
-|-------|------|
-| **Routing API** | Validation, logging, error handling, REST contract |
-| **OSRM** | Shortest path, table, nearest, match, trip on OpenStreetMap |
-| **OpenStreetMap** | Vietnam extract (Geofabrik) |
+| Layer | Local dev | Production server |
+|-------|-----------|-------------------|
+| **OSRM** | Docker `:5050/:5051` | Docker |
+| **Pelias** | **Remote** `149.28.134.50:4000` | Docker `:4000` |
+| **API / UI** | `bun run dev` | systemd + nginx |
 
-### Folder structure
-
-```
-.
-├── server.ts                 # Application entry
-├── src/
-│   ├── config/               # Environment (PORT, OSRM_URL)
-│   ├── controllers/          # HTTP handlers
-│   ├── services/             # OSRM client (route, table, nearest, match, trip)
-│   ├── routes/               # Elysia route definitions + /docs
-│   ├── types/                # Shared TypeScript types
-│   ├── utils/                # Validation, response helpers
-│   └── middlewares/          # Logger, error handler
-├── docker/
-│   └── osrm-entrypoint.sh    # OSRM extract → partition → customize → routed
-├── docker-compose.yml        # OSRM + Routing API
-└── Dockerfile                # Routing API image
-```
-
-## Prerequisites
-
-- [Bun](https://bun.sh) 1.1+
-- OSRM running (local or via Docker Compose)
-
-> **macOS note:** Port `7000` is often taken by AirPlay Receiver. Port **`5000`** is also used by AirPlay on many Macs. This project uses **`8080`** (API) and **`5050`** (OSRM).
-
-## Install
+## Local dev (Mac)
 
 ```bash
 bun install
-cp .env.example .env
-```
-
-## Run (development)
-
-```bash
-bun run dev
-```
-
-Server: **http://localhost:8080**
-
-Open in browser for interactive API playground (Route, Table, Nearest, Match, Trip).
-
-## Run (production)
-
-```bash
-bun run start
-```
-
-## Dev workflow (recommended)
-
-**Local dev — OSRM only, geocoding via public OpenStreetMap:**
-
-```bash
-# One-time: download Vietnam map (~309MB)
 bun run osrm:prepare
+bun run osrm:up          # routing only — no Pelias locally
 
-# Start OSRM (routing)
-bun run osrm:up
-
-# API + playground — uses .env.development → nominatim.openstreetmap.org
-bun run dev            # http://localhost:8080
+bun run dev              # API + UI; geocode hits server Pelias (.env.development)
 ```
 
-No Nominatim Docker needed for dev. `bun run dev` sets `NODE_ENV=development` and loads `.env.development` (public geocoding, ~1 req/s limit — fine for playground).
-
-**Production / self-hosted geocoding:**
+`.env.development` sets `PELIAS_URL=http://149.28.134.50:4000`. Server must allow your IP (`scripts/allow-dev-ip.sh`) or use tunnel:
 
 ```bash
-bun run geo:up         # OSRM + Nominatim
-bun run nominatim:logs # first import: 1–4+ hours
-curl http://localhost:9091/status   # wait until "OK"
-
-cp .env.example .env   # NOMINATIM_URL=http://localhost:9091
-bun run start
+bun run dev:remote:tunnel   # SSH tunnel :4000/:5050/:5051
 ```
 
-| Service | Port | Dev | Production |
-|---------|------|-----|------------|
-| OSRM | 5050 | `bun run osrm:up` | Docker |
-| Geocoding | — | public OSM (`.env.development`) | Nominatim `:9091` |
-| API | 8080 | `bun run dev` | `bun run start` |
+| Command | Local? |
+|---------|--------|
+| `bun run osrm:up` | Yes |
+| `bun run pelias:import` | **Server only** |
+| `bun run pelias:up` | **Server only** |
+| `bun run geo:up` | **Server only** |
 
-Shared map file: `./data/vietnam-latest.osm.pbf` (OSRM; Nominatim when self-hosted).
+## Production server — Pelias
 
-## Docker (OSRM + Nominatim)
+Chạy trên server (`/opt/routing-api`), không trên Mac dev:
 
 ```bash
-chmod +x docker/osrm-entrypoint.sh scripts/geo-up.sh
-bun run geo:up
+bun run pelias:import   # one-time: 1–3+ hours, ~12GB RAM
+bun run pelias:up
+bun run pelias:logs
 ```
 
-- OSRM: http://localhost:5050  
-- Nominatim: http://localhost:9091  
-- Routing API: `bun run dev` → http://localhost:8080  
+Config: `pelias/vietnam/`. Custom CSV: `data/custom-addresses/`.
 
-**Resources (Vietnam extract):** ~8GB RAM recommended, `shm_size: 2gb` for Nominatim Postgres, ~10GB+ disk for Nominatim DB volume.
+`.env` on server:
+
+```env
+PELIAS_URL=http://127.0.0.1:4000
+```
 
 ## Environment
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `8080` | API listen port |
-| `OSRM_URL` | `http://localhost:5050` | OSRM base URL |
-| `NOMINATIM_URL` | `http://localhost:9091` | Nominatim base URL (prod). Dev uses `.env.development` → public OSM |
-| `GEOCODE_USER_AGENT` | `routing-api-internal/1.0` | Required User-Agent for geocode requests (include contact email in prod) |
-
-## Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Browser playground — test all endpoints |
-| GET | `/api/geocode?q=...` | Address search (self-hosted Nominatim) |
-| GET | `/api/geocode-status` | Nominatim health |
-| GET | `/health` | Health check |
-| GET | `/docs` | HTML API documentation |
-| POST | `/api/route` | Point-to-point route |
-| POST | `/api/table` | Distance/duration matrix |
-| POST | `/api/nearest` | Snap to nearest road |
-| POST | `/api/match` | Map-match GPS trace |
-| POST | `/api/trip` | Optimized multi-stop trip |
-
-## Example: Route (Ho Chi Minh City)
-
-```bash
-curl -s -X POST http://localhost:8080/api/route \
-  -H "Content-Type: application/json" \
-  -d '{
-    "from": { "lat": 10.762622, "lng": 106.660172 },
-    "to":   { "lat": 10.776889, "lng": 106.700806 }
-  }' | jq
-```
-
-### Sample success response
-
-```json
-{
-  "success": true,
-  "data": {
-    "distance": 5234.5,
-    "duration": 612.3,
-    "geometry": { "type": "LineString", "coordinates": [[106.66, 10.76], "..."] },
-    "legs": [],
-    "weight": 612.3,
-    "summary": "Đường Nguyễn Huệ → ..."
-  }
-}
-```
-
-### Health check
-
-```bash
-curl -s http://localhost:8080/health | jq
-```
-
-```json
-{
-  "success": true,
-  "service": "routing-api",
-  "status": "ok"
-}
-```
-
-## Error format
-
-```json
-{
-  "success": false,
-  "message": "Invalid from.lat: must be a number between -90 and 90"
-}
-```
-
-## Extensibility
-
-The codebase is structured to add later:
-
-- Pelias geocoding
-- Reverse geocoding
-- Traffic overlays
-- ETA models
-- Pricing engine
-- Driver tracking
-- Redis caching
+| Variable | Dev (`.env.development`) | Server (`.env`) |
+|----------|--------------------------|-----------------|
+| `PELIAS_URL` | `http://149.28.134.50:4000` | `http://127.0.0.1:4000` |
+| `OSRM_URL` | `http://localhost:5050` | `http://127.0.0.1:5050` |
 
 ## License
 

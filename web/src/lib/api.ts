@@ -112,9 +112,9 @@ export async function fetchMonitorSnapshot(): Promise<SystemStatusData> {
     },
     osrmCar: mapOsrmProbe(osrmCar, "osrm-car"),
     osrmMotor: mapOsrmProbe(osrmMotor, "osrm-motor"),
-    nominatim: {
-      status: geocode.success && geocode.nominatim === "ok" ? "ok" : "down",
-      service: "nominatim",
+    pelias: {
+      status: geocode.success && geocode.pelias === "ok" ? "ok" : "down",
+      service: "pelias",
       message: geocode.message,
     },
     checkedAt: new Date().toISOString(),

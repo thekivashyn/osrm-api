@@ -3,6 +3,8 @@ node_modules/
 dist/
 data/
 web/node_modules/
-web/dist/
+.pelias-docker/
+pelias/vietnam/data/
+pelias/vietnam/.env
 
 .DS_Store

@@ -51,7 +51,7 @@ export type ApiResponse<T> = ApiOk<T> | ApiErr;
 export interface StatusResponse {
   success: boolean;
   osrm?: string;
-  nominatim?: string;
+  pelias?: string;
   service?: string;
   message?: string;
 }
@@ -62,7 +62,7 @@ export interface SystemStatusData {
   api: { status: "ok"; service: string; version: string };
   osrmCar: { status: ServiceProbeStatus; service: string; message?: string };
   osrmMotor: { status: ServiceProbeStatus; service: string; message?: string };
-  nominatim: { status: "ok" | "down"; service: string; message?: string };
+  pelias: { status: "ok" | "down"; service: string; message?: string };
   checkedAt: string;
 }
 

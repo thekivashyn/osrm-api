@@ -1,39 +1,25 @@
 #!/bin/sh
-# Track OSRM + Nominatim readiness on the server.
-# Usage:
-#   ./scripts/status.sh          # one-shot
-#   ./scripts/status.sh --watch  # refresh every 30s
+# Track OSRM + Pelias readiness on the server.
+set -e
 
-WATCH=false
-[ "$1" = "--watch" ] || [ "$1" = "-w" ] && WATCH=true
+WATCH="${1:-}"
 
-check() {
+print_once() {
   echo "══════════════════════════════════════════"
   echo " Routing stack status — $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
   echo "══════════════════════════════════════════"
 
-  # --- OSRM ---
   echo ""
-  echo "▶ OSRM (routing)"
+  echo "▶ OSRM (routing :5050 / :5051)"
   if docker ps --format '{{.Names}}' | grep -qx osrm; then
     echo "  container: $(docker ps --filter name=osrm --format '{{.Status}}')"
   else
-    echo "  container: NOT RUNNING"
+    echo "  container: not running"
   fi
-
-  CAR_OK=false
-  MOTOR_OK=false
-  if curl -sf "http://127.0.0.1:5050/route/v1/driving/106.66,10.76;106.70,10.77?overview=false" >/dev/null 2>&1; then
-    CAR_OK=true
-    echo "  car   (:5050): READY"
+  if curl -sf "http://127.0.0.1:5050/route/v1/driving/106.66,10.76;106.70,10.77?overview=false" 2>/dev/null | grep -q '"code":"Ok"'; then
+    echo "  car (:5050): READY"
   else
-    echo "  car   (:5050): building…"
-  fi
-  if curl -sf "http://127.0.0.1:5051/route/v1/driving/106.66,10.76;106.70,10.77?overview=false" >/dev/null 2>&1; then
-    MOTOR_OK=true
-    echo "  motor (:5051): READY"
-  else
-    echo "  motor (:5051): building…"
+    echo "  car (:5050): down or rebuilding"
   fi
 
   if [ -f /opt/routing-api/data/vietnam-car.osrm ]; then
@@ -43,56 +29,51 @@ check() {
     echo "  motor graph file: $(du -h /opt/routing-api/data/vietnam-motor.osrm | cut -f1)"
   fi
 
-  echo "  last log:"
-  docker logs osrm 2>&1 | tail -2 | sed 's/^/    /'
-
-  # --- Nominatim ---
   echo ""
-  echo "▶ Nominatim (geocode / GEO)"
-  if docker ps --format '{{.Names}}' | grep -qx nominatim; then
-    echo "  container: $(docker ps --filter name=nominatim --format '{{.Status}}')"
+  echo "▶ Pelias (geocode :4000)"
+  if docker ps --format '{{.Names}}' | grep -qx pelias_api; then
+    echo "  api: $(docker ps --filter name=pelias_api --format '{{.Status}}')"
   else
-    echo "  container: NOT RUNNING"
+    echo "  api: not running"
+  fi
+  if docker ps --format '{{.Names}}' | grep -qx pelias_elasticsearch; then
+    echo "  elasticsearch: $(docker ps --filter name=pelias_elasticsearch --format '{{.Status}}')"
   fi
 
-  GEO_STATUS=$(curl -s http://127.0.0.1:9091/status 2>/dev/null || echo "")
-  if echo "$GEO_STATUS" | grep -q OK; then
-    echo "  geocode (:9091): READY"
+  PELIAS_STATUS=$(curl -s "http://127.0.0.1:4000/v1/autocomplete?text=Ho%20Chi%20Minh&size=1&boundary.country=VNM" 2>/dev/null || echo "")
+  if [ -n "$PELIAS_STATUS" ] && echo "$PELIAS_STATUS" | grep -q FeatureCollection; then
+    echo "  geocode (:4000): READY"
   else
-    echo "  geocode (:9091): importing… (${GEO_STATUS:-no response})"
+    echo "  geocode (:4000): down or importing…"
   fi
-  echo "  last log:"
-  docker logs nominatim 2>&1 | tail -2 | sed 's/^/    /'
 
-  # --- API ---
+  if docker ps --format '{{.Names}}' | grep -qx pelias_api; then
+    docker logs pelias_api 2>&1 | tail -2 | sed 's/^/    /'
+  fi
+
   echo ""
-  echo "▶ Routing API"
-  if curl -sf http://127.0.0.1:8080/health >/dev/null 2>&1; then
-    echo "  api (:8080): READY"
+  echo "▶ Routing API (:8080)"
+  if systemctl is-active --quiet routing-api 2>/dev/null; then
+    echo "  systemd: active"
   else
-    echo "  api (:8080): DOWN"
+    echo "  systemd: inactive"
   fi
+  curl -sf http://127.0.0.1:8080/health 2>/dev/null | head -c 120 && echo "" || echo "  health: no response"
 
-  # --- Summary ---
   echo ""
-  echo "──────────────────────────────────────────"
-  if $CAR_OK && $MOTOR_OK && echo "$GEO_STATUS" | grep -q OK; then
-    echo " ALL READY — playground routing + geocode should work."
-    echo " Run: ./scripts/secure-docker-ports.sh"
-  else
-    echo " STILL BUILDING — HTTP 502 on /api/route is normal until OSRM ready."
-    [ "$CAR_OK" = false ] && echo "   • Wait OSRM: docker logs -f osrm"
-    [ "$GEO_STATUS" = "" ] || ! echo "$GEO_STATUS" | grep -q OK && echo "   • Wait GEO:  docker logs -f nominatim"
-  fi
-  echo "──────────────────────────────────────────"
+  echo "Tips:"
+  echo "   • Import Pelias:  bun run pelias:import"
+  echo "   • Start Pelias:   bun run pelias:up"
+  echo "   • OSRM logs:      bun run osrm:logs"
+  echo "   • Pelias logs:    bun run pelias:logs"
 }
 
-if $WATCH; then
+if [ "$WATCH" = "--watch" ]; then
   while true; do
     clear
-    check
+    print_once
     sleep 30
   done
 else
-  check
+  print_once
 fi

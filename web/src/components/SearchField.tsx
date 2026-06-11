@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { GeocodeResult, Point } from "../types";
 import { fetchGeocode } from "../lib/api";
 
-const DEBOUNCE_MS = 650;
+const DEBOUNCE_MS = 400;
 const NEAR_KM = 25;
 const LIST_MAX_H = 224;
 
@@ -13,6 +13,17 @@ type ListPos = {
   width: number;
   maxHeight: number;
 };
+
+function pickResult(
+  r: GeocodeResult,
+  onPick: (r: GeocodeResult) => void,
+  onChange: (v: string) => void,
+  close: () => void,
+) {
+  onPick(r);
+  onChange(r.displayName);
+  close();
+}
 
 export function SearchField({
   label,
@@ -32,6 +43,7 @@ export function SearchField({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<GeocodeResult[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [listPos, setListPos] = useState<ListPos | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -40,6 +52,8 @@ export function SearchField({
   const listRef = useRef<HTMLUListElement>(null);
   const biasRef = useRef(bias);
   biasRef.current = bias;
+
+  const close = useCallback(() => setOpen(false), []);
 
   const updateListPos = useCallback(() => {
     const el = anchorRef.current;
@@ -60,18 +74,24 @@ export function SearchField({
   const runSearch = useCallback(async (q: string) => {
     if (q.trim().length < 2) {
       setResults([]);
+      setError(null);
       setOpen(false);
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       const items = await fetchGeocode(q, biasRef.current);
       setResults(items);
       const focused = inputRef.current === document.activeElement;
-      setOpen(items.length > 0 && focused);
-    } catch {
+      setOpen(focused);
+      if (items.length === 0) {
+        setError("Không tìm thấy — thử bỏ số nhà hoặc thêm quận/phường");
+      }
+    } catch (e) {
       setResults([]);
       setOpen(false);
+      setError(e instanceof Error ? e.message : "Geocode thất bại");
     } finally {
       setLoading(false);
     }
@@ -104,55 +124,63 @@ export function SearchField({
   }, [open, results, updateListPos]);
 
   useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
+    const onDoc = (e: PointerEvent) => {
       const t = e.target as Node;
-      if (!wrapRef.current?.contains(t) && !listRef.current?.contains(t)) setOpen(false);
+      if (wrapRef.current?.contains(t) || listRef.current?.contains(t)) return;
+      close();
     };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
+    document.addEventListener("pointerdown", onDoc);
+    return () => document.removeEventListener("pointerdown", onDoc);
+  }, [close]);
 
   const dropdown =
-    open && results.length > 0 && listPos
+    open && listPos
       ? createPortal(
           <ul
             ref={listRef}
             role="listbox"
-            className="fixed overflow-auto rounded-xl border border-white/[0.08] bg-black py-1 shadow-2xl shadow-black/80 backdrop-blur-xl"
+            className="search-dropdown fixed overflow-auto rounded-xl border border-white/[0.08] bg-black py-1 shadow-2xl shadow-black/80 backdrop-blur-xl"
             style={{
               top: listPos.top,
               left: listPos.left,
               width: listPos.width,
               maxHeight: listPos.maxHeight,
-              zIndex: 9000,
+              zIndex: 10001,
             }}
           >
-            {results.map((r, i) => (
-              <li key={`${r.lat}-${r.lng}-${i}`} role="option">
-                <button
-                  type="button"
-                  className="w-full px-3 py-2 text-left hover:bg-white/[0.04]"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    onPick(r);
-                    onChange(r.displayName);
-                    setOpen(false);
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-xs leading-snug text-neutral-200">{r.displayName}</span>
-                    {r.distanceKm != null && r.distanceKm <= NEAR_KM && (
-                      <span className="shrink-0 rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-neutral-300">
-                        Gần bạn
-                      </span>
-                    )}
-                  </div>
-                  <span className="font-mono text-[10px] text-neutral-600">
-                    {r.lat.toFixed(5)}, {r.lng.toFixed(5)}
-                  </span>
-                </button>
+            {results.length === 0 ? (
+              <li className="px-3 py-2 text-xs text-neutral-500">Không có kết quả phù hợp</li>
+            ) : (
+              results.map((r, i) => (
+                <li key={`${r.lat}-${r.lng}-${i}`} role="option">
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 text-left hover:bg-white/[0.06] active:bg-white/[0.08]"
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      pickResult(r, onPick, onChange, close);
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-xs leading-snug text-neutral-200">{r.displayName}</span>
+                      {r.distanceKm != null && r.distanceKm <= NEAR_KM && (
+                        <span className="shrink-0 rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-neutral-300">
+                          Gần bạn
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-mono text-[10px] text-neutral-600">
+                      {r.lat.toFixed(5)}, {r.lng.toFixed(5)}
+                    </span>
+                  </button>
+                </li>
+              ))
+            )}
+            {results.length > 0 && /\d/.test(value) && (
+              <li className="border-t border-white/[0.06] px-3 py-2 text-[10px] leading-relaxed text-neutral-600">
+                OSM thường chỉ có tên đường — chọn đoạn gần nhất, hoặc click map để chỉnh điểm.
               </li>
-            ))}
+            )}
           </ul>,
           document.body,
         )
@@ -170,17 +198,22 @@ export function SearchField({
         <input
           ref={inputRef}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setError(null);
+          }}
           onFocus={() => {
-            if (results.length) {
+            if (results.length || error) {
               updateListPos();
               setOpen(true);
             }
           }}
-          onBlur={() => {
-            window.setTimeout(() => {
-              if (!listRef.current?.contains(document.activeElement)) setOpen(false);
-            }, 0);
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && results[0]) {
+              e.preventDefault();
+              pickResult(results[0], onPick, onChange, close);
+            }
+            if (e.key === "Escape") close();
           }}
           className="w-full rounded-lg border border-white/[0.08] bg-black py-2.5 pl-8 pr-3 text-sm text-neutral-100 outline-none transition placeholder:text-neutral-600 focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
           placeholder="Tìm địa chỉ…"
@@ -193,6 +226,9 @@ export function SearchField({
           <span className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin rounded-full border-2 border-neutral-700 border-t-white" />
         )}
       </div>
+      {error && !open && (
+        <p className="mt-1.5 text-[11px] leading-relaxed text-amber-400/90">{error}</p>
+      )}
       {dropdown}
     </div>
   );

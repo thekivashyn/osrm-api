@@ -61,7 +61,7 @@ export default function ServicesMonitorView() {
           <div>
             <h1 className="text-lg font-semibold text-white">Giám sát dịch vụ</h1>
             <p className="mt-1 text-sm text-neutral-500">
-              Trạng thái API, OSRM, Nominatim và audit logs truy xuất đầy đủ.
+              Trạng thái API, OSRM, Pelias và audit logs truy xuất đầy đủ.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -140,9 +140,9 @@ export default function ServicesMonitorView() {
             pending={loading && !data}
           />
           <ServiceCard
-            name="Nominatim Geo"
-            status={data?.nominatim.status ?? "down"}
-            message={data?.nominatim.message}
+            name="Pelias Geo"
+            status={data?.pelias.status ?? "down"}
+            message={data?.pelias.message}
             pending={loading && !data}
           />
             </div>

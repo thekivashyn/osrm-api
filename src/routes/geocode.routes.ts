@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { checkNominatimStatus, reverseGeocode, searchAddress } from "../services/geocode.service";
+import { checkPeliasStatus, reverseGeocode, searchAddress } from "../services/geocode.service";
 import { AppError, errorResponse } from "../utils/response";
 import { sanitizeProbeMessage } from "../utils/public-probe";
 
@@ -54,11 +54,11 @@ export const geocodeRoutes = new Elysia({ prefix: "/api" })
     },
   )
   .get("/geocode-status", async () => {
-    const status = await checkNominatimStatus();
+    const status = await checkPeliasStatus();
     return {
       success: status.ok,
-      nominatim: status.ok ? "ok" : "down",
-      service: "nominatim",
+      pelias: status.ok ? "ok" : "down",
+      service: "pelias",
       message: sanitizeProbeMessage(status.message),
     };
   });
