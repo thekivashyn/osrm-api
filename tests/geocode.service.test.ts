@@ -119,6 +119,23 @@ describe("searchAddress — Pelias", () => {
           ],
         });
       }
+      if (text === "25 Ngõ 230 lạc long quan") {
+        // Fuzzy stray on a different street — must be filtered out.
+        return Response.json({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [106.61, 10.8] },
+              properties: {
+                label: "25 Đường Ngô Y Linh, TP.HCM",
+                layer: "address",
+                match_type: "interpolated",
+              },
+            },
+          ],
+        });
+      }
       if (text === "230/25 lạc long quan") {
         return Response.json({
           type: "FeatureCollection",
@@ -154,6 +171,7 @@ describe("searchAddress — Pelias", () => {
 
     expect(results[0]?.displayName).toContain("Hẻm 230");
     expect(results.map((r) => r.displayName)).toContain("Hẻm 958 Lạc Long Quân, TP.HCM");
+    expect(results.map((r) => r.displayName)).not.toContain("25 Đường Ngô Y Linh, TP.HCM");
   });
 
   test("retries nationwide when nothing matches near the bias", async () => {

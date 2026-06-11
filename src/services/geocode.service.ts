@@ -180,6 +180,8 @@ type QueryVariant = {
   text: string;
   /** Synthetic "Hẻm/Ngõ N <street>" guess — only street-layer hits make sense. */
   streetLayerOnly?: boolean;
+  /** Result label/name must contain this (lowercase) — kills fuzzy strays. */
+  requireText?: string;
 };
 
 function buildQueryVariants(q: string): QueryVariant[] {
@@ -192,8 +194,9 @@ function buildQueryVariants(q: string): QueryVariant[] {
   if (alley && !/^(hẻm|ngõ|ngách)\s/i.test(head)) {
     const [, chain, house, street] = alley;
     // House number on the alley street — exact OSM point or interpolated.
-    variants.push({ text: `${house} Hẻm ${chain} ${street}` });
-    variants.push({ text: `${house} Ngõ ${chain} ${street}` });
+    // requireText pins results to the actual alley (no "Ngõ"→"Ngô" strays).
+    variants.push({ text: `${house} Hẻm ${chain} ${street}`, requireText: `hẻm ${chain}` });
+    variants.push({ text: `${house} Ngõ ${chain} ${street}`, requireText: `ngõ ${chain}` });
     // The alley itself.
     variants.push({ text: `Hẻm ${chain} ${street}`, streetLayerOnly: true }); // miền Nam
     variants.push({ text: `Ngõ ${chain} ${street}`, streetLayerOnly: true }); // miền Bắc
@@ -280,13 +283,21 @@ export async function searchAddress(
   const exactSets: PeliasFeature[][] = [];
   const fallbackSets: PeliasFeature[][] = [];
   sets.forEach((features, i) => {
+    const variant = variants[i];
     let kept = features;
-    if (variants[i]?.streetLayerOnly) {
+    if (variant?.streetLayerOnly) {
       // Only actual alleys — drops fuzzy hits like "Phạm Văn Ngô" street.
-      kept = features.filter(
+      kept = kept.filter(
         (f) =>
           f.properties?.layer === "street" &&
           /^(hẻm|ngõ|ngách)\s/i.test(f.properties?.name ?? f.properties?.label ?? ""),
+      );
+    }
+    if (variant?.requireText) {
+      kept = kept.filter((f) =>
+        `${f.properties?.label ?? ""} ${f.properties?.name ?? ""}`
+          .toLowerCase()
+          .includes(variant.requireText as string),
       );
     }
     if (kept.length === 0) return;
