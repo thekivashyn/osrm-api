@@ -1,7 +1,7 @@
 node_modules/
 .env
 dist/
-data/
+/data/
 web/node_modules/
 .pelias-docker/
 pelias/vietnam/data/
