@@ -7,6 +7,12 @@ const DEBOUNCE_MS = 400;
 const NEAR_KM = 25;
 const LIST_MAX_H = 224;
 
+/** House-number queries need GPS bias — searching too early returns wrong venues only. */
+function needsGeoBias(q: string): boolean {
+  const head = (q.split(",")[0] ?? "").trim();
+  return /^\d+[A-Za-z]?\s+\S/.test(head) && !/^\d+\/\d+/.test(head);
+}
+
 type ListPos = {
   top: number;
   left: number;
@@ -50,6 +56,7 @@ export function SearchField({
   isAdjusting = false,
   canAdjust = false,
   bias,
+  geoReady = true,
   accentClass,
   active = false,
 }: {
@@ -62,6 +69,8 @@ export function SearchField({
   isAdjusting?: boolean;
   canAdjust?: boolean;
   bias: Point;
+  /** False while GPS still loading — delays house-number geocode until bias is accurate. */
+  geoReady?: boolean;
   accentClass: string;
   active?: boolean;
 }) {
@@ -97,6 +106,9 @@ export function SearchField({
     });
   }, []);
 
+  const geoReadyRef = useRef(geoReady);
+  geoReadyRef.current = geoReady;
+
   const runSearch = useCallback(async (q: string) => {
     if (skipSearchRef.current) {
       skipSearchRef.current = false;
@@ -106,6 +118,12 @@ export function SearchField({
       setResults([]);
       setError(null);
       setOpen(false);
+      return;
+    }
+    if (needsGeoBias(q) && !geoReadyRef.current) {
+      setResults([]);
+      setError(null);
+      setOpen(true);
       return;
     }
     setLoading(true);
@@ -134,6 +152,14 @@ export function SearchField({
       if (timer.current) clearTimeout(timer.current);
     };
   }, [value, runSearch]);
+
+  useEffect(() => {
+    if (!geoReady) return;
+    if (inputRef.current !== document.activeElement) return;
+    if (value.trim().length < 2) return;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => runSearch(value), DEBOUNCE_MS);
+  }, [geoReady, value, runSearch]);
 
   useEffect(() => {
     if (inputRef.current !== document.activeElement) return;
@@ -179,7 +205,11 @@ export function SearchField({
             }}
           >
             {results.length === 0 ? (
-              <li className="px-3 py-2 text-xs text-neutral-500">Không có kết quả phù hợp</li>
+              <li className="px-3 py-2 text-xs text-neutral-500">
+                {needsGeoBias(value) && !geoReady
+                  ? "Đang lấy GPS để tìm số nhà chính xác…"
+                  : "Không có kết quả phù hợp"}
+              </li>
             ) : (
               results.map((r, i) => (
                 <li key={`${r.lat}-${r.lng}-${i}`} role="option">

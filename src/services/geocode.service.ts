@@ -235,6 +235,9 @@ const ALLEY_SNAP_RADIUS_KM = 3;
 /** Radius for gathering venue/address anchors on the same street (km). */
 const STREET_SNAP_RADIUS_KM = 12;
 
+/** Keep street-snap anchors/features within this distance of the search bias (km). */
+const STREET_SNAP_LOCAL_KM = 8;
+
 /** Results within this radius of the GPS bias are tried first. */
 const NEARBY_RADIUS_KM = 75;
 
@@ -461,6 +464,18 @@ function mergePeliasFeatures(a: PeliasFeature[], b: PeliasFeature[]): PeliasFeat
   return out;
 }
 
+function filterFeaturesNearBias(
+  features: PeliasFeature[],
+  bias: { lat: number; lng: number } | null,
+  maxKm: number,
+): PeliasFeature[] {
+  if (!bias) return features;
+  return features.filter((f) => {
+    const [lng, lat] = f.geometry.coordinates;
+    return haversineKm(bias.lat, bias.lng, lat, lng) <= maxKm;
+  });
+}
+
 export async function searchAddress(
   query: string,
   limit = 5,
@@ -501,15 +516,9 @@ export async function searchAddress(
   let nationalIdx = -1;
   if (streetSnapInput) {
     streetAnchorIdx = queryPromises.length;
+    // Citywide focus ranking — circle filter drops too many POI anchors away from bias.
     queryPromises.push(
-      peliasQuery(
-        streetSnapInput.street,
-        25,
-        bias,
-        bias != null,
-        true,
-        STREET_SNAP_RADIUS_KM,
-      ),
+      peliasQuery(streetSnapInput.street, 25, bias, false, true),
     );
   }
   if (bias) {
@@ -551,7 +560,10 @@ export async function searchAddress(
       return;
     }
     if (variant?.streetSnap) {
-      const merged = mergePeliasFeatures(features, streetAnchorFeatures);
+      const merged = mergePeliasFeatures(
+        filterFeaturesNearBias(features, bias, STREET_SNAP_LOCAL_KM),
+        filterFeaturesNearBias(streetAnchorFeatures, bias, STREET_SNAP_LOCAL_KM),
+      );
       const snapped = snapToStreetHouse(merged, variant.streetSnap);
       if (snapped) exactSets.push([snapped.feature as PeliasFeature]);
       return;

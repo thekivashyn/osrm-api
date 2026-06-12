@@ -67,6 +67,7 @@ export default function RoutingView({ osrm }: { osrm: "ok" | "down" | "loading" 
     () => resolveSearchBias(userGps, mapCenter, fallbackBias),
     [userGps, mapCenter, fallbackBias],
   );
+  const geoReady = gpsStatus === "ready" || gpsStatus === "denied" || gpsStatus === "unsupported";
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -385,6 +386,7 @@ export default function RoutingView({ osrm }: { osrm: "ok" | "down" | "loading" 
                   isAdjusting={pickSession?.field === "from"}
                   canAdjust={Boolean(from)}
                   bias={searchBias}
+                  geoReady={geoReady}
                   accentClass="bg-white"
                   active={activeField === "from"}
                 />
@@ -398,6 +400,7 @@ export default function RoutingView({ osrm }: { osrm: "ok" | "down" | "loading" 
                   isAdjusting={pickSession?.field === "to"}
                   canAdjust={Boolean(to)}
                   bias={searchBias}
+                  geoReady={geoReady}
                   accentClass="bg-neutral-500"
                   active={activeField === "to"}
                 />
